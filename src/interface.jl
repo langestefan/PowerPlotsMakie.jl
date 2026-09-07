@@ -125,16 +125,18 @@ supports(data) = applicable(component_types, data, NodeRole())
 
 function _assert_supported(data)
     supports(data) && return nothing
-    throw(ArgumentError(
-        """
-        No PowerPlotsMakie backend is loaded for data of type $(typeof(data)).
+    throw(
+        ArgumentError(
+            """
+            No PowerPlotsMakie backend is loaded for data of type $(typeof(data)).
 
-        For PowerModels network dictionaries, load PowerModels to trigger the extension:
+            For PowerModels network dictionaries, load PowerModels to trigger the extension:
 
-            using PowerModels, PowerPlotsMakie
+                using PowerModels, PowerPlotsMakie
 
-        To support another data model, add methods for `component_types`, `component_ids`,
-        `component_field`, `edge_endpoints` and `injection_bus`.
-        """,
-    ))
+            To support another data model, add methods for `component_types`, `component_ids`,
+            `component_field`, `edge_endpoints` and `injection_bus`.
+            """,
+        ),
+    )
 end

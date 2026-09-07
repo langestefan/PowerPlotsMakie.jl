@@ -1,16 +1,15 @@
 @testsnippet ParallelCase begin
     using Graphs
-    using PowerPlotsMakie: PowerGraph, PowerEdge, multiplicity, simple_graph,
-                           parallel_offsets
+    using PowerPlotsMakie:
+        PowerGraph, PowerEdge, multiplicity, simple_graph, parallel_offsets
 
     # Four buses in a ring, with two parallel circuits between buses 1 and 2.
     pairs = [(1, 2), (1, 2), (2, 3), (3, 4), (4, 1)]
     g = PowerGraph(4, pairs)
 end
 
-@testitem "PowerGraph keeps parallel circuits distinct" tags = [:unit, :fast] setup = [
-    ParallelCase,
-] begin
+@testitem "PowerGraph keeps parallel circuits distinct" tags = [:unit, :fast] setup =
+    [ParallelCase] begin
     @test nv(g) == 4
     # Five electrical circuits, not the four a SimpleGraph would collapse them to.
     @test ne(g) == 5
@@ -20,9 +19,8 @@ end
     @test ne(simple_graph(g)) == 4
 end
 
-@testitem "PowerGraph adjacency is deduplicated" tags = [:unit, :fast] setup = [
-    ParallelCase,
-] begin
+@testitem "PowerGraph adjacency is deduplicated" tags = [:unit, :fast] setup =
+    [ParallelCase] begin
     # Regression test. Pushing parallel edges into the adjacency list makes
     # `adjacency_matrix` emit duplicate structural entries and makes `degree` count a
     # parallel circuit twice, which silently distorts every layout.
@@ -35,9 +33,8 @@ end
     @test all(allunique, g.fadj)
 end
 
-@testitem "PowerGraph satisfies the Graphs interface" tags = [:unit, :fast] setup = [
-    ParallelCase,
-] begin
+@testitem "PowerGraph satisfies the Graphs interface" tags = [:unit, :fast] setup =
+    [ParallelCase] begin
     @test eltype(g) == Int
     @test Graphs.edgetype(g) == PowerEdge
     @test !is_directed(g)
@@ -63,9 +60,8 @@ end
     @test PowerEdge(1, 2, 1) != PowerEdge(1, 2, 2)
 end
 
-@testitem "parallel_offsets fans only parallel circuits" tags = [:unit, :fast] setup = [
-    ParallelCase,
-] begin
+@testitem "parallel_offsets fans only parallel circuits" tags = [:unit, :fast] setup =
+    [ParallelCase] begin
     off = parallel_offsets(g; spread = 0.2)
     @test length(off) == ne(g)
     # The two circuits between 1 and 2 are pushed to opposite sides...

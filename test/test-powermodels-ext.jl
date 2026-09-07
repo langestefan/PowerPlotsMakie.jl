@@ -11,9 +11,8 @@
     readcase(name) = PowerModels.parse_file(casepath(name))
 end
 
-@testitem "PowerModels case5 builds the expected graph" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "PowerModels case5 builds the expected graph" tags = [:integration] setup =
+    [MatpowerCases] begin
     net = powernetwork(readcase("case5.m"))
 
     @test length(vertex_indices(net, NodeRole())) == 5        # buses
@@ -28,18 +27,16 @@ end
     @test present_components(net, EdgeRole()) == [:branch]
 end
 
-@testitem "Bus ids sort numerically, not lexicographically" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "Bus ids sort numerically, not lexicographically" tags = [:integration] setup =
+    [MatpowerCases] begin
     net = powernetwork(readcase("case5.m"))
     buses = [r.id for r in net.vertices if r.component === :bus]
     # case5 has a bus "10": a lexicographic sort would put it before "2".
     @test buses == ["1", "2", "3", "4", "10"]
 end
 
-@testitem "Parallel circuits are preserved from real cases" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "Parallel circuits are preserved from real cases" tags = [:integration] setup =
+    [MatpowerCases] begin
     using PowerPlotsMakie: multiplicity
     for (name, expected) in ("case5.m" => 1, "case14.m" => 0, "case24.m" => 4)
         net = powernetwork(readcase(name))
@@ -54,9 +51,8 @@ end
     @test reference_nodes(readcase("case24.m")) == ["13"]
 end
 
-@testitem "Fields resolve, with missing for absent data" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "Fields resolve, with missing for absent data" tags = [:integration] setup =
+    [MatpowerCases] begin
     net = powernetwork(readcase("case5.m"))
 
     vm = vertex_column(net, :vm)
@@ -69,9 +65,7 @@ end
     @test all(ismissing, edge_column(net, :rate_a)[edge_indices(net, InjectionRole())])
 end
 
-@testitem "Switches and DC lines become edges" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "Switches and DC lines become edges" tags = [:integration] setup = [MatpowerCases] begin
     sw = powernetwork(readcase("case5_sw.m"))
     @test :switch in present_components(sw, EdgeRole())
 
@@ -85,9 +79,8 @@ end
     @test !isempty(vertex_indices(net, :storage))
 end
 
-@testitem "Pre-existing bus coordinates are picked up" tags = [:integration] setup = [
-    MatpowerCases,
-] begin
+@testitem "Pre-existing bus coordinates are picked up" tags = [:integration] setup =
+    [MatpowerCases] begin
     case = readcase("case5.m")
     @test node_coordinates(case, :bus, "1") === nothing
     case["bus"]["1"]["xcoord_1"] = 3.0

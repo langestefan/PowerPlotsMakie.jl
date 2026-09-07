@@ -52,10 +52,12 @@ function PPM.edge_endpoints(data::NETWORK, comp::Symbol, id::AbstractString)
         return (string(entry["f_bus"]), string(entry["t_bus"]))
     elseif haskey(entry, "bus")
         buses = unique(entry["bus"])
-        length(buses) == 2 || throw(ArgumentError(
-            "$comp[\"$id\"] connects $(length(buses)) buses; only two-winding \
-             components can be drawn as a single edge",
-        ))
+        length(buses) == 2 || throw(
+            ArgumentError(
+                "$comp[\"$id\"] connects $(length(buses)) buses; only two-winding \
+                 components can be drawn as a single edge",
+            ),
+        )
         return (string(buses[1]), string(buses[2]))
     end
     throw(ArgumentError("$comp[\"$id\"] has neither f_bus/t_bus nor bus"))

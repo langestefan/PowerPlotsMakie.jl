@@ -53,25 +53,26 @@
     )
 end
 
-@testitem "A custom backend is enough to build a network" tags = [:unit, :fast] setup = [
-    ToyBackend,
-] begin
+@testitem "A custom backend is enough to build a network" tags = [:unit, :fast] setup =
+    [ToyBackend] begin
     using Graphs
     net = powernetwork(ToyBackend.toy())
 
     @test nv(net) == 5          # 3 buses + gen + load
     @test ne(net) == 5          # 3 branches + 2 connectors
     @test net.vertices == [
-        ComponentRef(:bus, "A"), ComponentRef(:bus, "B"), ComponentRef(:bus, "C"),
-        ComponentRef(:gen, "g1"), ComponentRef(:load, "d1"),
+        ComponentRef(:bus, "A"),
+        ComponentRef(:bus, "B"),
+        ComponentRef(:bus, "C"),
+        ComponentRef(:gen, "g1"),
+        ComponentRef(:load, "d1"),
     ]
     @test edge_components(net) == [:branch, :branch, :branch, :connector, :connector]
     @test vertex_components(net) == [:bus, :bus, :bus, :gen, :load]
 end
 
-@testitem "Vertices are ordered nodes first, then injections" tags = [:unit, :fast] setup = [
-    ToyBackend,
-] begin
+@testitem "Vertices are ordered nodes first, then injections" tags = [:unit, :fast] setup =
+    [ToyBackend] begin
     net = powernetwork(ToyBackend.toy())
     nodes = vertex_indices(net, NodeRole())
     injections = vertex_indices(net, InjectionRole())
@@ -81,9 +82,8 @@ end
     @test maximum(nodes) < minimum(injections)
 end
 
-@testitem "Connectors join each injection to its bus" tags = [:unit, :fast] setup = [
-    ToyBackend,
-] begin
+@testitem "Connectors join each injection to its bus" tags = [:unit, :fast] setup =
+    [ToyBackend] begin
     using Graphs: src, dst, edges
     net = powernetwork(ToyBackend.toy())
     conn = edge_indices(net, InjectionRole())
@@ -110,9 +110,8 @@ end
     @test iszero(off[3])
 end
 
-@testitem "Column lookup yields per-index vectors with missing" tags = [:unit, :fast] setup = [
-    ToyBackend,
-] begin
+@testitem "Column lookup yields per-index vectors with missing" tags = [:unit, :fast] setup =
+    [ToyBackend] begin
     using Graphs
     net = powernetwork(ToyBackend.toy())
 
@@ -130,9 +129,8 @@ end
     @test vertex_column(net, :component) == vertex_components(net)
 end
 
-@testitem "present_components skips empty component types" tags = [:unit, :fast] setup = [
-    ToyBackend,
-] begin
+@testitem "present_components skips empty component types" tags = [:unit, :fast] setup =
+    [ToyBackend] begin
     net = powernetwork(ToyBackend.toy())
     @test present_components(net, NodeRole()) == [:bus]
     @test present_components(net, EdgeRole()) == [:branch]

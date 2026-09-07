@@ -106,7 +106,13 @@ function powernetwork(data)
 
     graph = PowerGraph(length(vertices), pairs)
     return PowerNetwork(
-        data, graph, vertices, edges, vertex_roles, edge_roles, vertex_index,
+        data,
+        graph,
+        vertices,
+        edges,
+        vertex_roles,
+        edge_roles,
+        vertex_index,
     )
 end
 

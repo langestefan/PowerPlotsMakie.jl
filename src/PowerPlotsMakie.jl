@@ -13,6 +13,10 @@ module PowerPlotsMakie
 
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
 using GeometryBasics: Point2f
+using Colors: Colorant, RGB
+using Makie: Makie, Attributes, RGBAf, to_color, @recipe
+using GraphMakie: graphplot!
+import NetworkLayout
 
 # The topological backbone: an undirected graph that keeps parallel circuits distinct.
 include("graph.jl")
@@ -20,7 +24,14 @@ include("graph.jl")
 include("interface.jl")
 # The canonical intermediate: data + graph + component references.
 include("network.jl")
+# Palettes and the resolution of colour/size specifications into per-index vectors.
+include("attributes.jl")
+# Vertex positioning, pinning and pre-existing coordinates.
+include("layouts.jl")
+# The Makie recipe itself.
+include("recipe.jl")
 
+export powerplot, powerplot!, Field
 export PowerNetwork, powernetwork
 export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge

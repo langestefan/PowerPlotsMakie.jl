@@ -25,8 +25,8 @@ multiplicity(e::PowerEdge) = e.mult
 
 Base.reverse(e::PowerEdge) = PowerEdge(e.dst, e.src, e.mult)
 Base.:(==)(a::PowerEdge, b::PowerEdge) =
-    a.mult == b.mult && ((a.src == b.src && a.dst == b.dst) ||
-                         (a.src == b.dst && a.dst == b.src))
+    a.mult == b.mult &&
+    ((a.src == b.src && a.dst == b.dst) || (a.src == b.dst && a.dst == b.src))
 Base.hash(e::PowerEdge, h::UInt) =
     hash(PowerEdge, hash(minmax(e.src, e.dst), hash(e.mult, h)))
 Base.show(io::IO, e::PowerEdge) = print(io, "PowerEdge $(e.src) => $(e.dst) (#$(e.mult))")
@@ -68,7 +68,7 @@ function PowerGraph(nv::Integer, pairs)
     nv = Int(nv)
     seen = Dict{Tuple{Int,Int},Int}()
     edgelist = Vector{PowerEdge}(undef, length(pairs))
-    fadj = [Int[] for _ in 1:nv]
+    fadj = [Int[] for _ = 1:nv]
     for (i, (s, d)) in enumerate(pairs)
         s, d = Int(s), Int(d)
         (1 <= s <= nv && 1 <= d <= nv) ||
