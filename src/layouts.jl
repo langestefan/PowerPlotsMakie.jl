@@ -83,7 +83,9 @@ function _layout_algorithm(layout, fixed, pinned)
         # said what it wants, including any initialpos/pin of its own.
         return layout
     elseif layout isa Symbol
-        throw(ArgumentError("unknown layout $(repr(layout)); expected :auto or an algorithm"))
+        throw(
+            ArgumentError("unknown layout $(repr(layout)); expected :auto or an algorithm"),
+        )
     end
     return layout
 end

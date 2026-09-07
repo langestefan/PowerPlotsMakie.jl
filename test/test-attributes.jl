@@ -1,8 +1,16 @@
 @testsnippet ColorTools begin
     using PowerPlotsMakie
-    using PowerPlotsMakie: COLOR_SCHEMES, COMPONENT_COLOR_ORDER, CONNECTOR_COLOR,
-                           MISSING_COLOR, ColorResult, assign_schemes, component_spec,
-                           infer_colormode, resolve_color, resolve_numeric
+    using PowerPlotsMakie:
+        COLOR_SCHEMES,
+        COMPONENT_COLOR_ORDER,
+        CONNECTOR_COLOR,
+        MISSING_COLOR,
+        ColorResult,
+        assign_schemes,
+        component_spec,
+        infer_colormode,
+        resolve_color,
+        resolve_numeric
     using Colors: Colorant
     using Makie: RGBAf
 
@@ -22,9 +30,8 @@ end
     @test length(COMPONENT_COLOR_ORDER) == 16
 end
 
-@testitem "Scheme assignment follows node/edge/injection order" tags = [:unit, :fast] setup = [
-    ColorTools, ToyBackend,
-] begin
+@testitem "Scheme assignment follows node/edge/injection order" tags = [:unit, :fast] setup =
+    [ColorTools, ToyBackend] begin
     net = powernetwork(ToyBackend.toy())
     schemes = assign_schemes(net)
     # bus -> blues, branch -> greens, gen -> oranges, load -> reds, as in PowerPlots.
@@ -35,9 +42,8 @@ end
     @test !haskey(schemes, :connector)   # connectors sit outside the rotation
 end
 
-@testitem "An absent component consumes no palette slot" tags = [:unit, :fast] setup = [
-    ColorTools, ToyBackend,
-] begin
+@testitem "An absent component consumes no palette slot" tags = [:unit, :fast] setup =
+    [ColorTools, ToyBackend] begin
     # With no loads, gen must still take the third slot rather than shifting.
     bare = ToyBackend.ToyNet(["A", "B"], ["l1" => ("A", "B")], ["g1" => "A"], [])
     schemes = assign_schemes(powernetwork(bare))
@@ -47,9 +53,8 @@ end
     @test !haskey(schemes, :load)
 end
 
-@testitem "Default colour is the dark end of the scheme" tags = [:unit, :fast] setup = [
-    ColorTools,
-] begin
+@testitem "Default colour is the dark end of the scheme" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     # No instruction at all: PowerPlots colours by ComponentType, leaving one category per
     # component, and Vega picks the first entry of the range.
     r = resolve_color([1, 2, 3], NamedTuple(), :blues)
@@ -58,7 +63,8 @@ end
     @test length(r.colors) == 3
 end
 
-@testitem "A literal colour overrides the palette" tags = [:unit, :fast] setup = [ColorTools] begin
+@testitem "A literal colour overrides the palette" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     for request in (:red, "red", RGBAf(1, 0, 0, 1))
         r = resolve_color([1, 2], (color = request,), :blues)
         @test r.kind === :constant
@@ -66,9 +72,8 @@ end
     end
 end
 
-@testitem "Field with numbers gives a continuous ramp" tags = [:unit, :fast] setup = [
-    ColorTools,
-] begin
+@testitem "Field with numbers gives a continuous ramp" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     r = resolve_color([0.0, 0.5, 1.0], (color = Field(:vm),), :blues)
     @test r.kind === :continuous
     @test r.field === :vm
@@ -87,7 +92,8 @@ end
     @test r.colors[2] != last(COLOR_SCHEMES[:blues])
 end
 
-@testitem "A constant field does not divide by zero" tags = [:unit, :fast] setup = [ColorTools] begin
+@testitem "A constant field does not divide by zero" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     r = resolve_color([2.0, 2.0, 2.0], (color = Field(:x),), :blues)
     @test r.kind === :continuous
     @test all(isfinite, (r.colorrange[1], r.colorrange[2]))
@@ -119,27 +125,27 @@ end
     @test infer_colormode(["a", "b"]) === :categorical
     @test infer_colormode([missing, missing]) === :categorical
 
-    forced = resolve_color(values, (color = Field(:bus_type), colormode = :categorical), :blues)
+    forced =
+        resolve_color(values, (color = Field(:bus_type), colormode = :categorical), :blues)
     @test forced.kind === :categorical
     @test forced.categories == [1, 2, 3]
 end
 
-@testitem "An explicit palette wins over the scheme" tags = [:unit, :fast] setup = [ColorTools] begin
-    r = resolve_color(
-        ["a", "b"], (color = Field(:k), palette = [:red, :blue]), :blues,
-    )
+@testitem "An explicit palette wins over the scheme" tags = [:unit, :fast] setup =
+    [ColorTools] begin
+    r = resolve_color(["a", "b"], (color = Field(:k), palette = [:red, :blue]), :blues)
     @test r.swatches[1] == RGBAf(1, 0, 0, 1)
     @test r.swatches[2] == RGBAf(0, 0, 1, 1)
 end
 
-@testitem "A per-index colour vector passes through" tags = [:unit, :fast] setup = [ColorTools] begin
+@testitem "A per-index colour vector passes through" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     r = resolve_color([1, 2], (color = [:red, :blue],), :blues)
     @test r.colors == [RGBAf(1, 0, 0, 1), RGBAf(0, 0, 1, 1)]
 end
 
-@testitem "resolve_numeric handles constants, vectors and fields" tags = [:unit, :fast] setup = [
-    ColorTools,
-] begin
+@testitem "resolve_numeric handles constants, vectors and fields" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     @test resolve_numeric([1, 2, 3], nothing, 7.0) == [7.0, 7.0, 7.0]
     @test resolve_numeric([1, 2, 3], 4, 7.0) == [4.0, 4.0, 4.0]
     @test resolve_numeric([1, 2, 3], [1, 2, 3], 7.0) == [1.0, 2.0, 3.0]
@@ -150,9 +156,8 @@ end
     @test resolve_numeric([missing, missing], Field(:x), 7.0) == [7.0, 7.0]
 end
 
-@testitem "component_spec accepts Dicts and pair vectors" tags = [:unit, :fast] setup = [
-    ColorTools,
-] begin
+@testitem "component_spec accepts Dicts and pair vectors" tags = [:unit, :fast] setup =
+    [ColorTools] begin
     d = Dict(:bus => (color = :red,))
     @test component_spec(d, :bus) == (color = :red,)
     @test component_spec(d, :branch) == NamedTuple()

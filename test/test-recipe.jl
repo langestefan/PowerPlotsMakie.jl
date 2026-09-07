@@ -18,9 +18,8 @@
     graphplot_of(p) = only(filter(x -> x isa GraphMakie.GraphPlot, p.plots))
 end
 
-@testitem "A default plot reproduces the PowerPlots palette" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "A default plot reproduces the PowerPlots palette" tags = [:integration] setup =
+    [RecipeTools] begin
     f, ax, p = powerplot(readcase("case5.m"))
     net = powernetwork(readcase("case5.m"))
     colors = p.gp_node_color[]
@@ -80,20 +79,18 @@ end
     @test all(pt -> all(isfinite, pt), pos)
 end
 
-@testitem "An explicit layout vector is used verbatim" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "An explicit layout vector is used verbatim" tags = [:integration] setup =
+    [RecipeTools] begin
     using Makie: Point2f
     case = readcase("case5.m")
     net = powernetwork(case)
-    wanted = [Point2f(i, 2i) for i in 1:nv(net)]
+    wanted = [Point2f(i, 2i) for i = 1:nv(net)]
     f, ax, p = powerplot(case; layout = wanted)
     @test p.node_pos[] == wanted
 end
 
-@testitem "Data coordinates are honoured and pinned" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "Data coordinates are honoured and pinned" tags = [:integration] setup =
+    [RecipeTools] begin
     using Makie: Point2f
     case = readcase("case5.m")
     for (id, xy) in ("1" => (0.0, 0.0), "2" => (1.0, 0.0), "3" => (1.0, 1.0))
@@ -109,9 +106,8 @@ end
     @test pos[idx["3"]] ≈ Point2f(1, 1)
 end
 
-@testitem "Per-component overrides beat role defaults" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "Per-component overrides beat role defaults" tags = [:integration] setup =
+    [RecipeTools] begin
     case = readcase("case5.m")
     net = powernetwork(case)
     f, ax, p = powerplot(
@@ -125,9 +121,8 @@ end
     @test all(==(30.0), p.gp_node_size[][vertex_indices(net, :gen)])
 end
 
-@testitem "Colouring by a field varies the colours" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "Colouring by a field varies the colours" tags = [:integration] setup =
+    [RecipeTools] begin
     case = readcase("case14.m")
     net = powernetwork(case)
     f, ax, p = powerplot(case; components = Dict(:bus => (color = Field(:vm),)))
@@ -135,9 +130,8 @@ end
     @test length(unique(buscolors)) > 1
 end
 
-@testitem "Uniform attributes collapse to scalars" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "Uniform attributes collapse to scalars" tags = [:integration] setup =
+    [RecipeTools] begin
     # Every edge solid: GraphMakie should not be pushed onto its per-edge `lines` fallback.
     case = readcase("case5.m")
     f, ax, p = powerplot(case; connector_linestyle = :solid)
@@ -165,9 +159,8 @@ end
     end
 end
 
-@testitem "A PowerNetwork can be plotted directly" tags = [:integration] setup = [
-    RecipeTools,
-] begin
+@testitem "A PowerNetwork can be plotted directly" tags = [:integration] setup =
+    [RecipeTools] begin
     net = powernetwork(readcase("case5.m"))
     f, ax, p = powerplot(net)
     @test length(p.node_pos[]) == nv(net)

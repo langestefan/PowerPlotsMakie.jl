@@ -15,7 +15,7 @@ using Graphs: Graphs, nv, ne, edges, vertices, src, dst
 using GeometryBasics: Point2f
 using Colors: Colorant, RGB
 using Makie: Makie, Attributes, RGBAf, to_color, @recipe
-using GraphMakie: graphplot!
+using GraphMakie: GraphMakie, graphplot!
 import NetworkLayout
 
 # The topological backbone: an undirected graph that keeps parallel circuits distinct.
@@ -30,8 +30,12 @@ include("attributes.jl")
 include("layouts.jl")
 # The Makie recipe itself.
 include("recipe.jl")
+# Opt-in dragging, pinning and re-layout.
+include("interaction.jl")
 
 export powerplot, powerplot!, Field
+export interactive!, relayout!, LayoutState
+export drag!, pin!, unpin!, unpin_all!, ispinned
 export PowerNetwork, powernetwork
 export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge

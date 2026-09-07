@@ -149,7 +149,9 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, components, schemes)
 
         colorfield = get(spec, :color, nothing) isa Field ? spec.color.name : nothing
         result = resolve_color(
-            _values(net, kind, colorfield, idx), spec, get(schemes, comp, :grays),
+            _values(net, kind, colorfield, idx),
+            spec,
+            get(schemes, comp, :grays),
         )
         colors[idx] = result.colors
         comp === CONNECTOR || (results[comp] = result)
@@ -158,7 +160,9 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, components, schemes)
         sizereq = get(spec, sizekey, nothing)
         sizefield = sizereq isa Field ? sizereq.name : nothing
         sizes[idx] = resolve_numeric(
-            _values(net, kind, sizefield, idx), sizereq, get(spec, :_default_size, 1.0),
+            _values(net, kind, sizefield, idx),
+            sizereq,
+            get(spec, :_default_size, 1.0),
         )
 
         markers[idx] .= Ref(get(spec, :marker, :circle))
@@ -181,33 +185,94 @@ function Makie.plot!(p::PowerPlot)
     end
 
     node_inputs = [
-        :network, :components, :node_color, :node_size, :node_marker, :node_strokewidth,
-        :node_strokecolor, :node_colormap, :node_colorrange, :node_colormode,
+        :network,
+        :components,
+        :node_color,
+        :node_size,
+        :node_marker,
+        :node_strokewidth,
+        :node_strokecolor,
+        :node_colormap,
+        :node_colorrange,
+        :node_colormode,
         :node_palette,
     ]
-    map!(p.attributes, node_inputs, :node_style) do net, components, color, size, marker,
-        strokewidth, strokecolor, colormap, colorrange, colormode, palette
+    map!(
+        p.attributes,
+        node_inputs,
+        :node_style,
+    ) do net,
+    components,
+    color,
+    size,
+    marker,
+    strokewidth,
+    strokecolor,
+    colormap,
+    colorrange,
+    colormode,
+    palette
         network = _as_network(net)
         main = (;
-            color, size, marker, strokewidth, strokecolor, colormap, colorrange,
-            colormode, palette, _default_size = 12.0,
+            color,
+            size,
+            marker,
+            strokewidth,
+            strokecolor,
+            colormap,
+            colorrange,
+            colormode,
+            palette,
+            _default_size = 12.0,
         )
         return _style(
-            network, :node, (main = main, connector = main), components,
+            network,
+            :node,
+            (main = main, connector = main),
+            components,
             assign_schemes(network),
         )
     end
 
     edge_inputs = [
-        :network, :components, :edge_color, :edge_width, :edge_linestyle, :edge_colormap,
-        :edge_colorrange, :edge_colormode, :edge_palette, :connector_color,
-        :connector_width, :connector_linestyle,
+        :network,
+        :components,
+        :edge_color,
+        :edge_width,
+        :edge_linestyle,
+        :edge_colormap,
+        :edge_colorrange,
+        :edge_colormode,
+        :edge_palette,
+        :connector_color,
+        :connector_width,
+        :connector_linestyle,
     ]
-    map!(p.attributes, edge_inputs, :edge_style) do net, components, color, width,
-        linestyle, colormap, colorrange, colormode, palette, ccolor, cwidth, clinestyle
+    map!(
+        p.attributes,
+        edge_inputs,
+        :edge_style,
+    ) do net,
+    components,
+    color,
+    width,
+    linestyle,
+    colormap,
+    colorrange,
+    colormode,
+    palette,
+    ccolor,
+    cwidth,
+    clinestyle
         network = _as_network(net)
         main = (;
-            color, width, linestyle, colormap, colorrange, colormode, palette,
+            color,
+            width,
+            linestyle,
+            colormap,
+            colorrange,
+            colormode,
+            palette,
             _default_size = 2.0,
         )
         connector = (;
@@ -217,7 +282,10 @@ function Makie.plot!(p::PowerPlot)
             _default_size = 1.0,
         )
         return _style(
-            network, :edge, (main = main, connector = connector), components,
+            network,
+            :edge,
+            (main = main, connector = connector),
+            components,
             assign_schemes(network),
         )
     end

@@ -48,7 +48,8 @@ const _SCHEME_ENDPOINTS = [
 
 "Five-stop dark-to-light ramps, keyed by scheme name."
 const COLOR_SCHEMES = Dict{Symbol,Vector{RGBAf}}(
-    name => [RGBAf(c) for c in range(parse(Colorant, lo), parse(Colorant, hi); length = 5)]
+    name =>
+        [RGBAf(c) for c in range(parse(Colorant, lo), parse(Colorant, hi); length = 5)]
     for (name, (lo, hi)) in _SCHEME_ENDPOINTS
 )
 
@@ -161,7 +162,13 @@ function resolve_color(values, spec, scheme::Symbol)
 
     if request isa AbstractVector && length(request) == n
         return ColorResult(
-            RGBAf.(to_color.(request)), :constant, nothing, [], RGBAf[], ramp, (0.0, 1.0),
+            RGBAf.(to_color.(request)),
+            :constant,
+            nothing,
+            [],
+            RGBAf[],
+            ramp,
+            (0.0, 1.0),
         )
     end
     request isa Field || return _constant_result(RGBAf(to_color(request)), n)
@@ -212,13 +219,19 @@ function _categorical_color(values, spec, ramp, field)
     elseif k <= 1
         [first(ramp)]
     else
-        [_sample(ramp, (i - 1) / (k - 1)) for i in 1:k]
+        [_sample(ramp, (i - 1) / (k - 1)) for i = 1:k]
     end
 
     lookup = Dict(c => swatches[i] for (i, c) in enumerate(categories))
     colors = [ismissing(v) ? MISSING_COLOR : lookup[v] for v in values]
     return ColorResult(
-        colors, :categorical, field, collect(categories), swatches, ramp, (0.0, 1.0),
+        colors,
+        :categorical,
+        field,
+        collect(categories),
+        swatches,
+        ramp,
+        (0.0, 1.0),
     )
 end
 
@@ -228,7 +241,7 @@ function _sample(ramp::Vector{RGBAf}, t::Real)
     x = clamp(t, 0.0, 1.0) * (length(ramp) - 1) + 1
     i = clamp(floor(Int, x), 1, length(ramp) - 1)
     f = Float32(x - i)
-    a, b = ramp[i], ramp[i + 1]
+    a, b = ramp[i], ramp[i+1]
     return RGBAf(
         a.r + f * (b.r - a.r),
         a.g + f * (b.g - a.g),
@@ -237,8 +250,8 @@ function _sample(ramp::Vector{RGBAf}, t::Real)
     )
 end
 
-_as_ramp(x::Symbol) = haskey(COLOR_SCHEMES, x) ? COLOR_SCHEMES[x] :
-                      [RGBAf(c) for c in Makie.to_colormap(x)]
+_as_ramp(x::Symbol) =
+    haskey(COLOR_SCHEMES, x) ? COLOR_SCHEMES[x] : [RGBAf(c) for c in Makie.to_colormap(x)]
 _as_ramp(x::AbstractVector) = [RGBAf(to_color(c)) for c in x]
 _as_ramp(x) = [RGBAf(c) for c in Makie.to_colormap(x)]
 
@@ -264,8 +277,7 @@ function resolve_numeric(values, request, default::Real; range = (5.0, 25.0))
     lo, hi = minimum(finite), maximum(finite)
     lo == hi && return fill(Float64(last(range)), n)
     return [
-        isfinite(v) ?
-        first(range) + (last(range) - first(range)) * (v - lo) / (hi - lo) :
+        isfinite(v) ? first(range) + (last(range) - first(range)) * (v - lo) / (hi - lo) :
         Float64(default) for v in numeric
     ]
 end
@@ -279,8 +291,7 @@ Accepts the canonical `Dict(:bus => (...))` as well as a vector of pairs, since 
 destroys NamedTuple-valued attributes during conversion and a `Dict` is the only nested
 form that survives.
 """
-component_spec(components::AbstractDict, comp::Symbol) =
-    get(components, comp, NamedTuple())
+component_spec(components::AbstractDict, comp::Symbol) = get(components, comp, NamedTuple())
 component_spec(components::AbstractVector, comp::Symbol) =
     something(findfirst_spec(components, comp), NamedTuple())
 component_spec(::Nothing, ::Symbol) = NamedTuple()
