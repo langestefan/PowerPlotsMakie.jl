@@ -1,0 +1,10 @@
+name = "PowerPlotsMakie"
+uuid = "49f9eb5c-8e5a-55cd-abba-b3fc827ff2f8"
+authors = ["Stefan de Lange <langestefan@msn.com>"]
+version = "0.1.0"
+
+[workspace]
+projects = ["test", "docs"]
+
+[compat]
+julia = "1.10"

@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier
+AddPrecommitUpdateCI: false
+Authors: Stefan de Lange <langestefan@msn.com>
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Stefan de Lange
+PackageName: PowerPlotsMakie
+PackageOwner: langestefan
+PackageUUID: 49f9eb5c-8e5a-55cd-abba-b3fc827ff2f8
+StrategyConfirmIncluded: false
+StrategyLevel: 3
+StrategyReviewExcluded: false
+_src_path: /home/sdelange/.julia/packages/BestieTemplate/MPEqY
