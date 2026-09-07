@@ -1,4 +1,6 @@
 [deps]
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 PowerPlotsMakie = "49f9eb5c-8e5a-55cd-abba-b3fc827ff2f8"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
