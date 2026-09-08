@@ -14,7 +14,7 @@ module PowerPlotsMakie
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
 using GeometryBasics: Point2f
 using Colors: Colorant, RGB
-using Makie: Makie, Attributes, RGBAf, to_color, @recipe
+using Makie: Makie, Attributes, RGBAf, scatter!, to_color, @recipe
 using GraphMakie: GraphMakie, graphplot!
 import NetworkLayout
 
@@ -35,7 +35,8 @@ include("interaction.jl")
 
 export powerplot, powerplot!, Field
 export interactive!, relayout!, LayoutState
-export drag!, pin!, unpin!, unpin_all!, ispinned
+export drag!, drag_group!, pin!, unpin!, unpin_all!, ispinned
+export select!, select_in!, deselect_all!, isselected
 export PowerNetwork, powernetwork
 export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge

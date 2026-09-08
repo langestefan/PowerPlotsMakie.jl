@@ -3,6 +3,8 @@
 # Run with:  julia --project=examples examples/interactive.jl
 #
 #   * drag a bus with the left mouse button to place it by hand
+#   * drag from empty space to rubber-band a group of buses; they are ringed in blue and
+#     move together as one when any of them is dragged
 #   * press `r` to re-run the layout — dragged buses stay put, the rest settle around them
 #   * press `u` to release every pinned bus
 #
@@ -26,7 +28,7 @@ case = PowerModels.parse_file(casefile)
 fig = Figure(size = (900, 700))
 ax = Axis(
     fig[1, 1],
-    title = "case14 — drag buses, press r to re-layout, u to unpin",
+    title = "case14 — drag buses or rubber-band a group; r re-layouts, u unpins",
     subtitle = "generators are squares, loads triangles; buses coloured by voltage",
 )
 hidedecorations!(ax)

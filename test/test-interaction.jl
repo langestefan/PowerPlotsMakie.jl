@@ -85,6 +85,183 @@ end
     end
 end
 
+@testitem "select! replaces the selection" tags = [:unit, :fast] setup = [InteractionTools] begin
+    s = ringstate()
+    @test isempty(s.selected)
+    select!(s, [1, 3])
+    @test isselected(s, 1) && isselected(s, 3) && !isselected(s, 2)
+    select!(s, [2])                       # replaces, does not add
+    @test isselected(s, 2) && !isselected(s, 1)
+    deselect_all!(s)
+    @test isempty(s.selected)
+    @test_throws BoundsError select!(s, [99])
+    # Selection is orthogonal to pinning.
+    select!(s, [1])
+    @test isempty(s.pinned)
+end
+
+@testitem "select_in! picks the vertices inside a rectangle" tags = [:unit, :fast] setup =
+    [InteractionTools] begin
+    using Makie: Rect2f
+    s = LayoutState([Point2f(0, 0), Point2f(1, 0), Point2f(5, 5), Point2f(-3, 2)])
+    select_in!(s, Rect2f(-0.5, -0.5, 2.0, 2.0))     # origin + widths
+    @test sort(collect(s.selected)) == [1, 2]
+    # A second rectangle replaces rather than accumulates.
+    select_in!(s, Rect2f(4.0, 4.0, 2.0, 2.0))
+    @test sort(collect(s.selected)) == [3]
+    # An empty region clears it.
+    select_in!(s, Rect2f(100.0, 100.0, 1.0, 1.0))
+    @test isempty(s.selected)
+end
+
+@testitem "drag_group! moves a group rigidly" tags = [:unit, :fast] setup =
+    [InteractionTools] begin
+    s = ringstate()
+    origins = Dict(1 => s.positions[1], 3 => s.positions[3])
+    before = copy(s.positions)
+    drag_group!(s, origins, Point2f(2, -1))
+
+    @test s.positions[1] == before[1] + Point2f(2, -1)
+    @test s.positions[3] == before[3] + Point2f(2, -1)
+    # Relative geometry of the group is preserved exactly.
+    @test s.positions[3] - s.positions[1] ≈ before[3] - before[1]
+    # Everything else is untouched, and the moved ones are pinned.
+    @test s.positions[2] == before[2]
+    @test ispinned(s, 1) && ispinned(s, 3) && !ispinned(s, 2)
+end
+
+@testitem "drag_group! anchors to origins, so repeated drags do not drift" tags =
+    [:unit, :fast] setup = [InteractionTools] begin
+    s = ringstate()
+    origins = Dict(1 => s.positions[1])
+    start = s.positions[1]
+    # Successive events during one drag all measure from the same origin.
+    for d in (Point2f(1, 0), Point2f(2, 0), Point2f(3, 0))
+        drag_group!(s, origins, d)
+    end
+    @test s.positions[1] == start + Point2f(3, 0)
+end
+
+@testitem "The plot exposes a selection highlight" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerModels
+    using CairoMakie
+    using Makie: Point2f
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+
+    f, ax, p = powerplot(case; selection = [2, 4])
+    @test length(p.selection_pos[]) == 2
+    @test p.selection_pos[] == p.node_pos[][[2, 4]]
+    # The ring is drawn larger than the node it marks.
+    @test all(p.selection_markersize[] .> p.gp_node_size[][[2, 4]])
+
+    # Selection is reactive.
+    p.selection = Int[]
+    @test isempty(p.selection_pos[])
+
+    # Out-of-range indices are dropped rather than throwing.
+    p.selection = [1, 9999]
+    @test length(p.selection_pos[]) == 1
+end
+
+@testitem "interactive! keeps plot selection in step" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerPlotsMakie: apply!
+    using PowerModels
+    using CairoMakie
+    using Makie: Point2f, Rect2f
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+
+    select!(it.state, [1, 2])
+    apply!(it)
+    @test plt.selection[] == [1, 2]
+    @test length(plt.selection_pos[]) == 2
+
+    # Moving a selected group keeps their relative positions and shifts only them.
+    before = copy(plt.node_pos[])
+    drag_group!(it.state, Dict(1 => before[1], 2 => before[2]), Point2f(1, 1))
+    apply!(it)
+    after = plt.node_pos[]
+    @test after[1] == before[1] + Point2f(1, 1)
+    @test after[2] == before[2] + Point2f(1, 1)
+    @test all(i -> after[i] == before[i], 3:length(before))
+end
+
+@testitem "A synthetic rubber band selects and moves a group" tags = [:interactive] begin
+    # The `select_rectangle` wiring can only be checked through the real event pipeline:
+    # it listens on raw mouse observables, not on our interaction.
+    using PowerPlotsMakie
+    using PowerModels
+    using GLMakie
+    import GLMakie.Makie
+    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
+
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+    screen = display(GLMakie.Screen(visible = false), fig)
+    Makie.colorbuffer(screen)
+
+    pos = copy(plt.node_pos[])
+    origin = Point2f(Makie.to_value(ax.scene.viewport).origin)
+    topx(p) = Tuple(Point2f(Makie.project(ax.scene, p)) + origin)
+
+    # Sweep a band across the whole axis, corner to corner. The gesture has to stay inside
+    # the viewport: `select_rectangle` ignores a press made outside the scene, so a start
+    # point computed from the data extent would fall outside and arm nothing.
+    vp = Makie.to_value(ax.scene.viewport)
+    corner = Point2f(vp.origin)
+    far = corner + Point2f(vp.widths)
+    e = events(fig.scene)
+    e.mouseposition[] = Tuple(corner + Point2f(3, 3))
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.press)
+    for f in (0.3, 0.7, 1.0)
+        e.mouseposition[] = Tuple(corner + f * (far - corner - Point2f(6, 6)))
+    end
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.release)
+
+    @test !it.began_on_node                    # the gesture started on empty space
+    @test length(it.state.selected) == length(pos)
+    @test plt.selection[] == collect(1:length(pos))
+    @test length(plt.selection_pos[]) == length(pos)
+
+    # Now drag one member of that selection: the whole group must move together.
+    before = copy(plt.node_pos[])
+    start = topx(before[1])
+    e.mouseposition[] = start
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.press)
+    @test it.began_on_node                     # this one did land on a vertex
+    for k = 1:3
+        e.mouseposition[] = (start[1] + 20k, start[2] + 20k)
+    end
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.release)
+
+    after = plt.node_pos[]
+    delta = after[1] - before[1]
+    @test delta != Point2f(0, 0)               # it actually moved
+    # Rigid: every vertex shifted by the same amount.
+    @test all(i -> after[i] - before[i] ≈ delta, eachindex(after))
+end
+
 @testitem "A synthetic mouse drag moves a bus" tags = [:interactive] begin
     # Drives the real Makie event pipeline rather than calling `drag!` directly. The
     # earlier tests exercised only the state machine, which is exactly why a bug in the

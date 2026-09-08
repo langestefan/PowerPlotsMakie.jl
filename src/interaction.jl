@@ -12,12 +12,13 @@ these calls.
 mutable struct LayoutState
     positions::Vector{Point2f}
     pinned::Set{Int}
+    selected::Set{Int}
 end
 
 LayoutState(positions::AbstractVector) =
-    LayoutState(Point2f[Point2f(p) for p in positions], Set{Int}())
+    LayoutState(Point2f[Point2f(p) for p in positions], Set{Int}(), Set{Int}())
 
-Base.copy(s::LayoutState) = LayoutState(copy(s.positions), copy(s.pinned))
+Base.copy(s::LayoutState) = LayoutState(copy(s.positions), copy(s.pinned), copy(s.selected))
 
 """
     drag!(state, idx, position) -> state
@@ -55,6 +56,71 @@ end
 
 "Whether vertex `idx` is currently pinned."
 ispinned(state::LayoutState, idx::Integer) = Int(idx) in state.pinned
+
+# ---------------------------------------------------------------------------------------
+# Selection
+# ---------------------------------------------------------------------------------------
+
+"Whether vertex `idx` is currently selected."
+isselected(state::LayoutState, idx::Integer) = Int(idx) in state.selected
+
+"""
+    select!(state, indices) -> state
+
+Replace the selection with `indices`.
+
+Selection is independent of pinning: selecting a bus says what the next drag will move, not
+where the layout may put it.
+"""
+function select!(state::LayoutState, indices)
+    empty!(state.selected)
+    for i in indices
+        checkbounds(state.positions, i)
+        push!(state.selected, Int(i))
+    end
+    return state
+end
+
+"""
+    select_in!(state, rect) -> state
+
+Select every vertex whose position lies inside `rect`, a `Rect2` in data coordinates.
+
+This is the payload of a rubber-band selection, kept separate from the event handling so
+that "which vertices does this rectangle cover" can be tested without a window.
+"""
+function select_in!(state::LayoutState, rect)
+    empty!(state.selected)
+    for (i, p) in enumerate(state.positions)
+        p in rect && push!(state.selected, i)
+    end
+    return state
+end
+
+"Clear the selection."
+function deselect_all!(state::LayoutState)
+    empty!(state.selected)
+    return state
+end
+
+"""
+    drag_group!(state, origins, delta) -> state
+
+Move every vertex in `origins` to its recorded position plus `delta`, pinning each.
+
+`origins` maps vertex index to where it sat when the drag began. Anchoring to the start
+rather than accumulating per-event deltas keeps a long drag from drifting, and keeps the
+whole group rigid: every member moves by exactly the same amount.
+"""
+function drag_group!(state::LayoutState, origins::AbstractDict{Int,Point2f}, delta)
+    d = Point2f(delta)
+    for (i, origin) in origins
+        checkbounds(state.positions, i)
+        state.positions[i] = origin + d
+        push!(state.pinned, i)
+    end
+    return state
+end
 
 """
     relayout!(state, graph; algorithm = NetworkLayout.Stress) -> state
@@ -117,14 +183,26 @@ mutable struct NetworkInteraction{P}
     candidate::Union{Nothing,Int}
     "Vertex currently being dragged."
     dragging::Union{Nothing,Int}
+    "Cursor position, in data coordinates, when the drag began."
+    anchor::Union{Nothing,Point2f}
+    "Where each vertex being dragged sat when the drag began."
+    origins::Dict{Int,Point2f}
+    """
+    Whether the current press landed on a vertex.
+
+    Unlike `candidate` this survives the button release, because the rubber-band rectangle
+    is reported on release and has to know whether that gesture was a node drag.
+    """
+    began_on_node::Bool
     "Keys already acted on, so a held key does not repeat its action."
     held::Set{Makie.Keyboard.Button}
     algorithm::Any
 end
 
-"Push the current positions into the plot."
+"Push the current positions and selection into the plot."
 function apply!(i::NetworkInteraction)
     i.plot.layout = copy(i.state.positions)
+    i.plot.selection = sort!(collect(i.state.selected))
     return i
 end
 
@@ -155,18 +233,34 @@ function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEven
         # Still over the node here — record it in case this becomes a drag.
         nodeplot = GraphMakie.get_node_plot(graph_plot(i.plot))
         plt, idx = Makie.pick(axis.scene)
-        i.candidate =
+        hit =
             (plt === nodeplot && idx isa Integer && 1 <= idx <= length(i.state.positions)) ?
             Int(idx) : nothing
+        i.candidate = hit
+        i.began_on_node = hit !== nothing
+        i.anchor = Point2f(event.data)
+
+        if hit === nothing
+            # A press on empty space starts a rubber band, and drops the old selection.
+            deselect_all!(i.state)
+            apply!(i)
+        elseif !isselected(i.state, hit)
+            # Pressing an unselected vertex selects just it, so a drag moves only that one.
+            select!(i.state, (hit,))
+            apply!(i)
+        end
         return false                      # a plain click is not ours to consume
     elseif event.type === Makie.MouseEventTypes.leftdragstart
         if i.candidate !== nothing
             i.dragging = i.candidate
+            # Move the whole selection when the grabbed vertex belongs to it.
+            group = isselected(i.state, i.candidate) ? i.state.selected : Set(i.candidate)
+            i.origins = Dict(j => i.state.positions[j] for j in group)
             return true
         end
     elseif event.type === Makie.MouseEventTypes.leftdrag
-        if i.dragging !== nothing
-            drag!(i.state, i.dragging, Point2f(event.data))
+        if i.dragging !== nothing && i.anchor !== nothing
+            drag_group!(i.state, i.origins, Point2f(event.data) - i.anchor)
             apply!(i)
             return true
         end
@@ -175,6 +269,8 @@ function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEven
         wasdragging = i.dragging !== nothing
         i.dragging = nothing
         i.candidate = nothing
+        i.anchor = nothing
+        empty!(i.origins)
         return wasdragging
     end
     return false
@@ -209,8 +305,14 @@ end
 """
     interactive!(ax, plot; algorithm = NetworkLayout.Stress, name = :powerplot) -> NetworkInteraction
 
-Make a `powerplot` interactive: drag buses with the left mouse button, press `r` to re-run
-the layout around whatever you have pinned, and `u` to release every pin.
+Make a `powerplot` interactive:
+
+  - drag a bus with the left mouse button to place it by hand;
+  - drag from empty space to rubber-band a group of buses, which are then highlighted and
+    move together as one when any of them is dragged;
+  - press `r` to re-run the layout around whatever is pinned, and `u` to release every pin.
+
+Pass `rubberband = false` to leave the left-drag-on-empty-space gesture alone.
 
 Interaction is opt-in, and GLMakie-first — a CairoMakie figure has no event loop to drive
 it. Makie's own rectangle-zoom is deregistered, because it also claims left-drag and would
@@ -222,13 +324,22 @@ f, ax, p = powerplot(case)
 interactive!(ax, p)
 ```
 """
-function interactive!(ax, plot; algorithm = NetworkLayout.Stress, name::Symbol = :powerplot)
+function interactive!(
+    ax,
+    plot;
+    algorithm = NetworkLayout.Stress,
+    name::Symbol = :powerplot,
+    rubberband::Bool = true,
+)
     state = LayoutState(plot.node_pos[])
     interaction = NetworkInteraction(
         plot,
         state,
         nothing,
         nothing,
+        nothing,
+        Dict{Int,Point2f}(),
+        false,
         Set{Makie.Keyboard.Button}(),
         algorithm,
     )
@@ -236,5 +347,19 @@ function interactive!(ax, plot; algorithm = NetworkLayout.Stress, name::Symbol =
     haskey(Makie.interactions(ax), :rectanglezoom) &&
         Makie.deregister_interaction!(ax, :rectanglezoom)
     Makie.register_interaction!(ax, name, interaction)
+
+    if rubberband
+        # `Makie.select_rectangle` is hard-wired to the left button — the same gesture that
+        # drags a vertex — and offers no way to rebind it, so both see every drag. The
+        # rectangle is ignored when the press landed on a vertex, which leaves the natural
+        # split: drag a bus to move it, drag from empty space to select.
+        rect = Makie.select_rectangle(ax.scene)
+        Makie.on(rect) do r
+            interaction.began_on_node && return nothing
+            select_in!(interaction.state, r)
+            apply!(interaction)
+            return nothing
+        end
+    end
     return interaction
 end

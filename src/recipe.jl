@@ -76,6 +76,12 @@ per-component settings are lost in the process.
         connector_width = 1.0,
         connector_linestyle = :dash,
 
+        # --- selection highlight -------------------------------------------------------
+        selection = Int[],
+        selection_color = :dodgerblue,
+        selection_strokewidth = 2.5,
+        selection_scale = 1.7,
+
         # --- escape hatch --------------------------------------------------------------
         graphplot_attr = (;),
     )
@@ -319,5 +325,39 @@ function Makie.plot!(p::PowerPlot)
         curve_distance_usage = true,
         p.graphplot_attr[]...,
     )
+
+    # Selection highlight: a ring drawn over each selected vertex.
+    #
+    # A ring rather than a thicker node stroke, because Makie takes scatter `strokewidth`
+    # as a uniform — it cannot vary per point, so the selected nodes could not be given a
+    # heavier outline than the rest within the same scatter. An overlay sidesteps that and
+    # keeps the underlying node styling untouched.
+    map!(p.attributes, [:node_pos, :selection], :selection_pos) do pos, sel
+        return Point2f[pos[i] for i in _selected_indices(sel, length(pos))]
+    end
+    map!(
+        p.attributes,
+        [:node_style, :selection, :selection_scale],
+        :selection_markersize,
+    ) do style, sel, scale
+        idx = _selected_indices(sel, length(style.sizes))
+        return Float64[style.sizes[i] * scale for i in idx]
+    end
+    scatter!(
+        p,
+        p.selection_pos;
+        markersize = p.selection_markersize,
+        color = RGBAf(0, 0, 0, 0),
+        strokecolor = p.selection_color,
+        strokewidth = p.selection_strokewidth,
+    )
     return p
 end
+
+"""
+Selected indices in a stable order, dropping any that are out of range.
+
+`selection` may be a `Set`, whose iteration order is unspecified; positions and marker
+sizes are built in two separate computations and would otherwise not line up.
+"""
+_selected_indices(selection, n) = sort!([Int(i) for i in selection if 1 <= i <= n])
