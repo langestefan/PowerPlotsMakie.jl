@@ -33,16 +33,25 @@ using GLMakie
 using PowerPlotsMakie
 
 # ---------------------------------------------------------------------------------------
-# An 18-bus MV feeder: a substation, a trunk, and three laterals.
+# A 17-bus MV feeder: a substation, a trunk, and three laterals.
 # ---------------------------------------------------------------------------------------
 
-const BRANCHES = [
-    ("SS", "T1"),                          # substation transformer
-    ("T1", "T2"),
-    ("T2", "A1"), ("A1", "A2"), ("A2", "A3"), ("A2", "A4"),
-    ("T2", "B1"), ("B1", "B2"), ("B2", "B3"), ("B1", "B4"), ("B4", "B5"),
-    ("T2", "C1"), ("C1", "C2"), ("C2", "C3"), ("C2", "C4"), ("C4", "C5"),
+"""
+The feeder as a list of paths — each entry is a run of buses joined end to end, which is
+how a feeder is actually described: a trunk out of the substation and three laterals, two
+of which branch again.
+"""
+const PATHS = [
+    ["SS", "T1", "T2"],              # substation transformer and trunk
+    ["T2", "A1", "A2", "A3"],        # lateral A
+    ["A2", "A4"],
+    ["T2", "B1", "B2", "B3"],        # lateral B
+    ["B1", "B4", "B5"],
+    ["T2", "C1", "C2", "C3"],        # lateral C
+    ["C2", "C4", "C5"],
 ]
+
+const BRANCHES = [(p[i], p[i+1]) for p in PATHS for i = 1:(length(p)-1)]
 
 const LOAD_BUSES = ["A3", "A4", "B2", "B3", "B5", "C3", "C5"]
 const GEN_BUSES = ["SS", "A2", "C4"]      # grid infeed plus two embedded generators
