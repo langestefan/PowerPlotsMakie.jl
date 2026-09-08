@@ -113,7 +113,12 @@ layout.
 mutable struct NetworkInteraction{P}
     plot::P
     state::LayoutState
+    "Vertex under the cursor when the button went down — see `process_interaction`."
+    candidate::Union{Nothing,Int}
+    "Vertex currently being dragged."
     dragging::Union{Nothing,Int}
+    "Keys already acted on, so a held key does not repeat its action."
+    held::Set{Makie.Keyboard.Button}
     algorithm::Any
 end
 
@@ -134,13 +139,29 @@ function relayout!(i::NetworkInteraction)
     return apply!(i)
 end
 
-function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEvent, axis)
-    nodeplot = GraphMakie.get_node_plot(graph_plot(i.plot))
+"""
+Translate mouse events into [`drag!`](@ref) calls.
 
-    if event.type === Makie.MouseEventTypes.leftdragstart
+The vertex is identified on `leftdown`, **not** on `leftdragstart`. `leftdragstart` fires
+only once the pointer has already moved, by which time it is no longer over the node: with
+the default marker size, picking still finds the node 3 px from its centre but has moved on
+to a different plot by 6 px. Picking at drag-start therefore misses almost every drag.
+
+`pick` forces a synchronous GPU readback, so it is confined to the `leftdown` branch rather
+than run on every mouse event.
+"""
+function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEvent, axis)
+    if event.type === Makie.MouseEventTypes.leftdown
+        # Still over the node here — record it in case this becomes a drag.
+        nodeplot = GraphMakie.get_node_plot(graph_plot(i.plot))
         plt, idx = Makie.pick(axis.scene)
-        if plt === nodeplot && idx isa Integer && 1 <= idx <= length(i.state.positions)
-            i.dragging = Int(idx)
+        i.candidate =
+            (plt === nodeplot && idx isa Integer && 1 <= idx <= length(i.state.positions)) ?
+            Int(idx) : nothing
+        return false                      # a plain click is not ours to consume
+    elseif event.type === Makie.MouseEventTypes.leftdragstart
+        if i.candidate !== nothing
+            i.dragging = i.candidate
             return true
         end
     elseif event.type === Makie.MouseEventTypes.leftdrag
@@ -149,24 +170,40 @@ function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEven
             apply!(i)
             return true
         end
-    elseif event.type === Makie.MouseEventTypes.leftdragstop
-        if i.dragging !== nothing
-            i.dragging = nothing
-            return true
-        end
+    elseif event.type === Makie.MouseEventTypes.leftdragstop ||
+           event.type === Makie.MouseEventTypes.leftup
+        wasdragging = i.dragging !== nothing
+        i.dragging = nothing
+        i.candidate = nothing
+        return wasdragging
     end
     return false
 end
 
+"""
+Translate key events into re-layout and unpin.
+
+`KeysEvent` fires on every change to the set of held keys, and a held key repeats. Acting
+on "is `r` in the set" would therefore re-run the layout many times over while the key is
+down — each run costs a few hundred milliseconds on a mid-sized network, so the window
+would appear to hang. Only the transition from released to pressed counts.
+"""
 function Makie.process_interaction(i::NetworkInteraction, event::Makie.KeysEvent, _axis)
-    if Makie.Keyboard.r in event.keys
-        relayout!(i)
-        return true
-    elseif Makie.Keyboard.u in event.keys
-        unpin_all!(i.state)
-        return true
+    handled = false
+    for (key, action) in (
+        Makie.Keyboard.r => (() -> relayout!(i)),
+        Makie.Keyboard.u => (() -> unpin_all!(i.state)),
+    )
+        if key in event.keys
+            key in i.held && continue     # still down from the previous event
+            push!(i.held, key)
+            action()
+            handled = true
+        else
+            delete!(i.held, key)
+        end
     end
-    return false
+    return handled
 end
 
 """
@@ -187,7 +224,14 @@ interactive!(ax, p)
 """
 function interactive!(ax, plot; algorithm = NetworkLayout.Stress, name::Symbol = :powerplot)
     state = LayoutState(plot.node_pos[])
-    interaction = NetworkInteraction(plot, state, nothing, algorithm)
+    interaction = NetworkInteraction(
+        plot,
+        state,
+        nothing,
+        nothing,
+        Set{Makie.Keyboard.Button}(),
+        algorithm,
+    )
     # Rectangle zoom also binds left-drag and would consume the event first.
     haskey(Makie.interactions(ax), :rectanglezoom) &&
         Makie.deregister_interaction!(ax, :rectanglezoom)

@@ -85,6 +85,85 @@ end
     end
 end
 
+@testitem "A synthetic mouse drag moves a bus" tags = [:interactive] begin
+    # Drives the real Makie event pipeline rather than calling `drag!` directly. The
+    # earlier tests exercised only the state machine, which is exactly why a bug in the
+    # event handling (picking at `leftdragstart`, after the pointer has left the node)
+    # went unnoticed. Needs GLMakie: CairoMakie has no picking.
+    using PowerPlotsMakie
+    using PowerModels
+    using GLMakie
+    import GLMakie.Makie
+    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
+
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+    screen = display(GLMakie.Screen(visible = false), fig)
+    # Picking reads back the GPU pick buffer, which only exists once a frame has been
+    # drawn. Without this the pick silently finds nothing and no drag ever starts.
+    Makie.colorbuffer(screen)
+
+    before = copy(plt.node_pos[])
+    origin = Point2f(Makie.to_value(ax.scene.viewport).origin)
+    # Aim a few pixels off centre: picking is exact there, and it is where a real pointer
+    # lands anyway.
+    target = Tuple(Point2f(Makie.project(ax.scene, before[1])) + origin + Point2f(3, 3))
+
+    e = events(fig.scene)
+    e.mouseposition[] = target
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.press)
+    for k = 1:4
+        e.mouseposition[] = (target[1] + 15k, target[2] + 15k)
+    end
+    e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.release)
+
+    after = copy(plt.node_pos[])
+    @test after[1] != before[1]           # the bus actually moved
+    @test 1 in it.state.pinned            # and dragging pinned it
+    @test it.dragging === nothing         # drag released cleanly
+    @test it.candidate === nothing
+    # Only the dragged bus moved.
+    @test all(i -> after[i] == before[i], 2:length(before))
+end
+
+@testitem "A held key does not repeat its action" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerPlotsMakie: NetworkInteraction, LayoutState
+    using CairoMakie
+    import CairoMakie.Makie
+    using CairoMakie.Makie: Point2f, Keyboard, KeysEvent
+    using PowerModels
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+
+    pin!(it.state, 1)
+    # `u` held down: KeysEvent fires repeatedly, but only the first press should act.
+    @test Makie.process_interaction(it, KeysEvent(Set([Keyboard.u])), ax)
+    @test isempty(it.state.pinned)
+    pin!(it.state, 2)
+    @test !Makie.process_interaction(it, KeysEvent(Set([Keyboard.u])), ax)
+    @test 2 in it.state.pinned            # still pinned: the repeat was ignored
+    # Releasing re-arms it.
+    Makie.process_interaction(it, KeysEvent(Set{Keyboard.Button}()), ax)
+    @test Makie.process_interaction(it, KeysEvent(Set([Keyboard.u])), ax)
+    @test isempty(it.state.pinned)
+end
+
 @testitem "interactive! registers and drives the plot" tags = [:integration] begin
     using PowerPlotsMakie
     using PowerPlotsMakie: graph_plot, apply!
