@@ -124,6 +124,9 @@ end
     @test infer_colormode(values) === :continuous
     @test infer_colormode(["a", "b"]) === :categorical
     @test infer_colormode([missing, missing]) === :categorical
+    # Bool is a Real in Julia, but a flag names two states rather than measuring
+    # anything: a ramp from false to true would be nonsense.
+    @test infer_colormode([true, false]) === :categorical
 
     forced =
         resolve_color(values, (color = Field(:bus_type), colormode = :categorical), :blues)

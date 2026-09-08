@@ -54,6 +54,10 @@ plt = powerplot!(
 
 interaction = interactive!(ax, plt)
 
+# The key: one legend for the components drawn in a flat colour, and a colorbar for the
+# buses, which are coloured by voltage. Makie builds neither automatically.
+powerlegend!(fig[1, 2], plt)
+
 # ---------------------------------------------------------------------------------------
 # Routing algorithm selector
 #

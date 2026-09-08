@@ -14,7 +14,20 @@ module PowerPlotsMakie
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
 using GeometryBasics: Point2f
 using Colors: Colorant, RGB
-using Makie: Makie, Attributes, Observable, RGBAf, Rect2f, scatter!, to_color, @recipe
+using Makie:
+    Makie,
+    Attributes,
+    Colorbar,
+    GridLayout,
+    Legend,
+    LineElement,
+    MarkerElement,
+    Observable,
+    RGBAf,
+    Rect2f,
+    scatter!,
+    to_color,
+    @recipe
 using GraphMakie: GraphMakie, graphplot!
 import NetworkLayout
 using PrecompileTools: @compile_workload, @setup_workload
@@ -33,12 +46,15 @@ include("radial.jl")
 include("layouts.jl")
 # The Makie recipe itself.
 include("recipe.jl")
+# Legends and colorbars, which Makie builds for no plot automatically.
+include("legend.jl")
 # Opt-in dragging, pinning and re-layout.
 include("interaction.jl")
 # Warm the plotting path at build time rather than on first use.
 include("precompile.jl")
 
 export powerplot, powerplot!, Field
+export powerlegend!, powercolorbar!, legend_entries, legend_groups, LegendEntry
 export interactive!, relayout!, resync!, LayoutState
 export drag!, drag_group!, pin!, unpin!, unpin_all!, ispinned
 export select!, select_in!, deselect_all!, isselected

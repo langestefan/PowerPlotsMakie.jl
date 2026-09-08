@@ -103,7 +103,7 @@ lets the colorbars be rebuilt afterwards.
 """
 struct ColorResult
     colors::Vector{RGBAf}
-    kind::Symbol                       # :constant, :categorical or :continuous
+    kind::Symbol                       # :constant, :explicit, :categorical or :continuous
     field::Union{Nothing,Symbol}
     categories::Vector{Any}            # categorical: the distinct values, in order
     swatches::Vector{RGBAf}            # categorical: one colour per category
@@ -120,6 +120,8 @@ _constant_result(c, n) =
 Decide whether a field should be drawn with a continuous colormap or a categorical palette.
 
 Real numbers get a colormap; anything else (strings, symbols, booleans) gets a palette.
+`Bool` is a `Real` in Julia, but a flag names two states rather than measuring anything, so
+it is treated as categorical.
 PowerPlots makes the user say so via `data_type`; inferring it is right far more often than
 not, and `colormode` overrides it when the guess is wrong — notably for integer codes such
 as `bus_type`, which are numbers but mean categories.
@@ -127,7 +129,7 @@ as `bus_type`, which are numbers but mean categories.
 function infer_colormode(values)
     present = Iterators.filter(!ismissing, values)
     isempty(present) && return :categorical
-    return all(v -> v isa Real, present) ? :continuous : :categorical
+    return all(v -> v isa Real && !(v isa Bool), present) ? :continuous : :categorical
 end
 
 """
@@ -139,15 +141,14 @@ Turn one component's colour specification into per-index colours.
 names a [`Field`](@ref)), `spec` is the user's per-component settings, and `scheme` is the
 palette slot assigned by [`assign_schemes`](@ref).
 
-Three modes, matching PowerPlots' three:
+Four modes — PowerPlots' three, plus the usual Makie escape hatch:
 
   - a literal colour, or anything Makie can parse as one, gives a constant colour;
   - `Field(f)` over non-numeric values gives categorical colours drawn across the scheme;
   - `Field(f)` over numbers gives a continuous ramp, with `colorrange` defaulting to the
-    extrema of the data.
-
-A vector of colours of the right length is passed through untouched, which is the usual
-Makie escape hatch.
+    extrema of the data;
+  - a vector of colours of the right length is passed through untouched, and is reported as
+    `:explicit` so that a legend knows it has nothing to describe.
 """
 function resolve_color(values, spec, scheme::Symbol)
     n = length(values)
@@ -160,10 +161,12 @@ function resolve_color(values, spec, scheme::Symbol)
     # single category and Vega picks the first entry of the scale range.
     request === nothing && return _constant_result(first(ramp), n)
 
+    # Explicit per-index colours are their own mode: they draw like a constant, but there
+    # is no single swatch that stands for them, so a legend has to leave them out.
     if request isa AbstractVector && length(request) == n
         return ColorResult(
             RGBAf.(to_color.(request)),
-            :constant,
+            :explicit,
             nothing,
             [],
             RGBAf[],
