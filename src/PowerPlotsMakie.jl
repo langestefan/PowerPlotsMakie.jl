@@ -39,7 +39,7 @@ include("interaction.jl")
 include("precompile.jl")
 
 export powerplot, powerplot!, Field
-export interactive!, relayout!, LayoutState
+export interactive!, relayout!, resync!, LayoutState
 export drag!, drag_group!, pin!, unpin!, unpin_all!, ispinned
 export select!, select_in!, deselect_all!, isselected
 export PowerNetwork, powernetwork

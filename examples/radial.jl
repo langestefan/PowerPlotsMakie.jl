@@ -10,6 +10,7 @@
 #   * right-click a bus to release just that pin
 #   * press `r` to relax the layout — pinned buses stay put, the rest settle around them
 #   * press `u` to release every pinned bus
+#   * pick a routing algorithm from the menu below the plot; `auto` lands back on the tree
 #
 # This network is a tree, so `layout = :auto` detects it (`isradial`) and lays it out with
 # `RadialTree`, a wrapper around NetworkLayout's Buchheim: the substation sits at the top
@@ -30,6 +31,7 @@
 # plottable.
 
 using GLMakie
+using NetworkLayout
 using PowerPlotsMakie
 
 # ---------------------------------------------------------------------------------------
@@ -145,6 +147,46 @@ plt = powerplot!(
 )
 
 interaction = interactive!(ax, plt)
+
+# ---------------------------------------------------------------------------------------
+# Routing algorithm selector
+#
+# Choosing an algorithm re-routes from scratch: every pin is released and the network is
+# laid out afresh, which is what you want from a menu that says "lay this out differently".
+# `r` stays incremental — it relaxes from wherever the buses are now, holding the pins —
+# and it follows the menu for the algorithms that can hold one. Buchheim cannot: it has no
+# notion of an initial position or a fixed node, so a tree layout leaves `r` relaxing with
+# Stress.
+#
+# Each option is a (layout, relaxer) pair: what to pass to the plot's `layout` attribute,
+# and the constructor `r` should rebuild with afterwards.
+# ---------------------------------------------------------------------------------------
+
+# Makie reads a menu option as (label, value) only when it is a 2-tuple; a `label => value`
+# pair is handed back whole, label and all.
+const LAYOUTS = [
+    ("auto (detect)", (:auto, NetworkLayout.Stress)),
+    ("radial (Buchheim)", (:radial, NetworkLayout.Stress)),
+    ("stress", (:stress, NetworkLayout.Stress)),
+    ("spring", (NetworkLayout.Spring(), NetworkLayout.Spring)),
+    ("SFDP", (NetworkLayout.SFDP(), NetworkLayout.SFDP)),
+]
+
+controls = fig[2, 1] = GridLayout(tellwidth = false)
+Label(controls[1, 1], "routing algorithm:"; halign = :right)
+menu = Menu(controls[1, 2]; options = LAYOUTS, default = 1, width = 220)
+
+on(menu.selection) do (layout, relaxer)
+    unpin_all!(interaction.state)
+    deselect_all!(interaction.state)
+    plt.pin = Int[]
+    plt.layout = layout
+    interaction.algorithm = relaxer
+    # The interaction is still holding the positions from the old layout until told
+    # otherwise; without this the next drag would snap the network back to them.
+    resync!(interaction)
+    autolimits!(ax)
+end
 
 screen = display(fig)
 

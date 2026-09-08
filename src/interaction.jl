@@ -246,6 +246,33 @@ function relayout!(i::NetworkInteraction)
 end
 
 """
+    resync!(interaction) -> interaction
+
+Adopt the plot's current vertex positions as the interaction's own.
+
+Writing to the plot's `layout` attribute — switching routing algorithm from a menu, say —
+recomputes the positions inside the recipe, which leaves the interaction still holding the
+positions from before: the next drag would snap the whole network back to the old layout.
+Call this after any such write to hand the new positions over.
+
+Pins and the selection survive, minus any vertex the new layout does not have. Whether a
+pin still *means* anything afterwards is the caller's business: `Stress`, `Spring` and
+`SFDP` honour the plot's `pin` attribute, while the tree layouts have nowhere to put it and
+will move a pinned bus regardless.
+"""
+function resync!(i::NetworkInteraction)
+    positions = i.plot.node_pos[]
+    n = length(positions)
+    resize!(i.state.positions, n)
+    for (k, p) in enumerate(positions)
+        i.state.positions[k] = Point2f(p)
+    end
+    filter!(<=(n), i.state.pinned)
+    filter!(<=(n), i.state.selected)
+    return apply!(i)
+end
+
+"""
 Translate mouse events into [`drag!`](@ref) calls.
 
 The vertex is identified on `leftdown`, **not** on `leftdragstart`. `leftdragstart` fires

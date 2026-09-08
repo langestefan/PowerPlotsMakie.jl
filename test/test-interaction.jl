@@ -508,3 +508,40 @@ end
     @test plt.node_pos[][1] == Point2f(7, 7)
     @test length(plt.node_pos[]) == length(it.state.positions)
 end
+
+@testitem "resync! adopts positions from a new layout" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerModels
+    using CairoMakie
+    using Makie: Point2f
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+
+    drag!(it.state, 1, Point2f(42, 42))
+    PowerPlotsMakie.apply!(it)
+
+    # Switching routing algorithm recomputes the positions inside the recipe, and the
+    # interaction is left holding the old ones until it is told otherwise.
+    plt.layout = :radial
+    stale = copy(it.state.positions)
+    fresh = plt.node_pos[]
+    @test stale != fresh
+
+    resync!(it)
+    @test it.state.positions == Point2f[Point2f(p) for p in fresh]
+    @test ispinned(it.state, 1)          # pins survive; honouring them is the layout's job
+
+    # And the plot follows the interaction again, rather than the discarded layout.
+    drag!(it.state, 2, Point2f(7, 7))
+    PowerPlotsMakie.apply!(it)
+    @test plt.node_pos[][2] == Point2f(7, 7)
+    @test plt.node_pos[][3] == fresh[3]
+end
