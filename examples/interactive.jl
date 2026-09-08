@@ -5,11 +5,14 @@
 #   * drag a bus with the left mouse button to place it by hand
 #   * drag from empty space to rubber-band a group of buses; they are ringed in blue and
 #     move together as one when any of them is dragged
-#   * press `r` to re-run the layout — dragged buses stay put, the rest settle around them
+#   * shift- or control-click a bus to add or remove it from the selection by hand; hold
+#     either while rubber-banding to widen the selection instead of replacing it
+#   * right-click a bus to release just that pin
+#   * press `r` to re-run the layout — pinned buses stay put, the rest settle around them
 #   * press `u` to release every pinned bus
 #
-# Dragging pins, so `r` is the interesting part: it makes layout iterative rather than a
-# one-shot call.
+# Dragging pins a bus, and every pinned bus carries a small dark dot. That is what makes
+# `r` interesting: layout becomes iterative rather than a one-shot call.
 #
 # The first run spends a while compiling GLMakie and this package before the window becomes
 # responsive; that cost is Julia's, not the plot's. Once running, dragging redraws in about
@@ -28,8 +31,8 @@ case = PowerModels.parse_file(casefile)
 fig = Figure(size = (900, 700))
 ax = Axis(
     fig[1, 1],
-    title = "case14 — drag buses or rubber-band a group; r re-layouts, u unpins",
-    subtitle = "generators are squares, loads triangles; buses coloured by voltage",
+    title = "case14 — drag or rubber-band buses; right-click unpins, r re-layouts",
+    subtitle = "rings mark the selection, dots mark pinned buses",
 )
 hidedecorations!(ax)
 hidespines!(ax)

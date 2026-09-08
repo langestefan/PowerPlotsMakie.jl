@@ -82,6 +82,13 @@ per-component settings are lost in the process.
         selection_strokewidth = 2.5,
         selection_scale = 1.7,
 
+        # --- pinned marker -------------------------------------------------------------
+        pinned = Int[],
+        pinned_color = :black,
+        pinned_strokecolor = :white,
+        pinned_strokewidth = 1.0,
+        pinned_scale = 0.4,
+
         # --- escape hatch --------------------------------------------------------------
         graphplot_attr = (;),
     )
@@ -350,6 +357,28 @@ function Makie.plot!(p::PowerPlot)
         color = RGBAf(0, 0, 0, 0),
         strokecolor = p.selection_color,
         strokewidth = p.selection_strokewidth,
+    )
+
+    # Pinned marker: a small dot at the centre of every vertex the layout may not move.
+    # Dark with a light outline so it stays legible against both ends of a colour ramp.
+    map!(p.attributes, [:node_pos, :pinned], :pinned_pos) do pos, pinned
+        return Point2f[pos[i] for i in _selected_indices(pinned, length(pos))]
+    end
+    map!(
+        p.attributes,
+        [:node_style, :pinned, :pinned_scale],
+        :pinned_markersize,
+    ) do style, pinned, scale
+        idx = _selected_indices(pinned, length(style.sizes))
+        return Float64[style.sizes[i] * scale for i in idx]
+    end
+    scatter!(
+        p,
+        p.pinned_pos;
+        markersize = p.pinned_markersize,
+        color = p.pinned_color,
+        strokecolor = p.pinned_strokecolor,
+        strokewidth = p.pinned_strokewidth,
     )
     return p
 end

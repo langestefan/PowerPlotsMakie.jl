@@ -28,7 +28,12 @@ function component_ids(::_PrecompileFixture, comp::Symbol)
     return String[]
 end
 
-function component_field(::_PrecompileFixture, comp::Symbol, id::AbstractString, field::Symbol)
+function component_field(
+    ::_PrecompileFixture,
+    comp::Symbol,
+    id::AbstractString,
+    field::Symbol,
+)
     field === :vm && comp === :bus && return 1.0 + parse(Int, id) / 100
     field === :kind && return isodd(parse(Int, id)) ? "a" : "b"
     return missing

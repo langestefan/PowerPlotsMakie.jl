@@ -14,7 +14,7 @@ module PowerPlotsMakie
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
 using GeometryBasics: Point2f
 using Colors: Colorant, RGB
-using Makie: Makie, Attributes, RGBAf, scatter!, to_color, @recipe
+using Makie: Makie, Attributes, Observable, RGBAf, Rect2f, scatter!, to_color, @recipe
 using GraphMakie: GraphMakie, graphplot!
 import NetworkLayout
 using PrecompileTools: @compile_workload, @setup_workload

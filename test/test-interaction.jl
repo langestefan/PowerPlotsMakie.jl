@@ -201,6 +201,135 @@ end
     @test all(i -> after[i] == before[i], 3:length(before))
 end
 
+@testitem "The plot marks pinned vertices" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerModels
+    using CairoMakie
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+
+    f, ax, p = powerplot(case; pinned = [1, 3])
+    @test length(p.pinned_pos[]) == 2
+    @test p.pinned_pos[] == p.node_pos[][[1, 3]]
+    # The dot sits inside the node rather than ringing it.
+    @test all(p.pinned_markersize[] .< p.gp_node_size[][[1, 3]])
+
+    p.pinned = Int[]
+    @test isempty(p.pinned_pos[])
+end
+
+@testitem "Dragging marks the vertex as pinned in the plot" tags = [:integration] begin
+    using PowerPlotsMakie
+    using PowerPlotsMakie: apply!
+    using PowerModels
+    using CairoMakie
+    using Makie: Point2f
+
+    CairoMakie.activate!(type = "png")
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+
+    @test isempty(plt.pinned[])
+    drag!(it.state, 2, Point2f(5, 5))
+    apply!(it)
+    @test plt.pinned[] == [2]
+
+    unpin!(it.state, 2)
+    apply!(it)
+    @test isempty(plt.pinned[])
+end
+
+@testitem "Right-click releases one pin" tags = [:interactive] begin
+    using PowerPlotsMakie
+    using PowerModels
+    using GLMakie
+    import GLMakie.Makie
+    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
+
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+    screen = display(GLMakie.Screen(visible = false), fig)
+    Makie.colorbuffer(screen)
+
+    pin!(it.state, 1)
+    pin!(it.state, 2)
+    PowerPlotsMakie.apply!(it)
+    @test plt.pinned[] == [1, 2]
+
+    origin = Point2f(Makie.to_value(ax.scene.viewport).origin)
+    target =
+        Tuple(Point2f(Makie.project(ax.scene, plt.node_pos[][1])) + origin + Point2f(3, 3))
+    e = events(fig.scene)
+    e.mouseposition[] = target
+    e.mousebutton[] = MouseButtonEvent(Mouse.right, Mouse.press)
+    e.mousebutton[] = MouseButtonEvent(Mouse.right, Mouse.release)
+
+    # Only the vertex under the cursor is released.
+    @test !ispinned(it.state, 1)
+    @test ispinned(it.state, 2)
+    @test plt.pinned[] == [2]
+end
+
+@testitem "Shift-click extends the selection" tags = [:interactive] begin
+    using PowerPlotsMakie
+    using PowerModels
+    using GLMakie
+    import GLMakie.Makie
+    using GLMakie.Makie: Mouse, MouseButtonEvent, Keyboard, KeyEvent, events, Point2f
+
+    PowerModels.silence()
+    case = PowerModels.parse_file(
+        joinpath(dirname(pathof(PowerModels)), "..", "test", "data", "matpower", "case5.m"),
+    )
+    fig = Figure()
+    ax = Axis(fig[1, 1])
+    plt = powerplot!(ax, case)
+    it = interactive!(ax, plt)
+    screen = display(GLMakie.Screen(visible = false), fig)
+    Makie.colorbuffer(screen)
+
+    origin = Point2f(Makie.to_value(ax.scene.viewport).origin)
+    at(i) =
+        Tuple(Point2f(Makie.project(ax.scene, plt.node_pos[][i])) + origin + Point2f(3, 3))
+    e = events(fig.scene)
+    click(i) = begin
+        e.mouseposition[] = at(i)
+        e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.press)
+        e.mousebutton[] = MouseButtonEvent(Mouse.left, Mouse.release)
+    end
+
+    click(1)
+    @test sort(collect(it.state.selected)) == [1]
+
+    # Plain click on another vertex replaces the selection...
+    click(2)
+    @test sort(collect(it.state.selected)) == [2]
+
+    # ...while shift-click adds to it, and clicking again removes it.
+    e.keyboardbutton[] = KeyEvent(Keyboard.left_shift, Keyboard.press)
+    click(1)
+    @test sort(collect(it.state.selected)) == [1, 2]
+    click(1)
+    @test sort(collect(it.state.selected)) == [2]
+    e.keyboardbutton[] = KeyEvent(Keyboard.left_shift, Keyboard.release)
+end
+
 @testitem "A synthetic rubber band selects and moves a group" tags = [:interactive] begin
     # The `select_rectangle` wiring can only be checked through the real event pipeline:
     # it listens on raw mouse observables, not on our interaction.
@@ -306,6 +435,10 @@ end
     @test 1 in it.state.pinned            # and dragging pinned it
     @test it.dragging === nothing         # drag released cleanly
     @test it.candidate === nothing
+    # Dragging a vertex must not also draw a selection rectangle. `Makie.select_rectangle`
+    # armed on every press regardless of what was under the cursor, so it did.
+    @test !it.band_plot.visible[]
+    @test it.band_start === nothing
     # Only the dragged bus moved.
     @test all(i -> after[i] == before[i], 2:length(before))
 end

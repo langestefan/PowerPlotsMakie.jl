@@ -194,16 +194,44 @@ mutable struct NetworkInteraction{P}
     is reported on release and has to know whether that gesture was a node drag.
     """
     began_on_node::Bool
+    "Corner of the rubber band, in data coordinates, or `nothing` when not banding."
+    band_start::Union{Nothing,Point2f}
+    "The drawn rubber-band rectangle, and the plot showing it."
+    band::Observable{Rect2f}
+    band_plot::Any
     "Keys already acted on, so a held key does not repeat its action."
     held::Set{Makie.Keyboard.Button}
     algorithm::Any
 end
 
-"Push the current positions and selection into the plot."
+"Push the current positions, selection and pin marks into the plot."
 function apply!(i::NetworkInteraction)
     i.plot.layout = copy(i.state.positions)
     i.plot.selection = sort!(collect(i.state.selected))
+    i.plot.pinned = sort!(collect(i.state.pinned))
     return i
+end
+
+"Axis-aligned rectangle spanning two corners, in either order."
+function _corners_to_rect(a::Point2f, b::Point2f)
+    lo = Point2f(min(a[1], b[1]), min(a[2], b[2]))
+    hi = Point2f(max(a[1], b[1]), max(a[2], b[2]))
+    return Rect2f(lo, hi - lo)
+end
+
+"Whether a selection modifier (shift or control) is currently held."
+function _multiselect_held(axis)
+    keys = Makie.events(axis.scene).keyboardstate
+    return Makie.Keyboard.left_shift in keys ||
+           Makie.Keyboard.right_shift in keys ||
+           Makie.Keyboard.left_control in keys ||
+           Makie.Keyboard.right_control in keys
+end
+
+"Add `idx` to the selection, or remove it if already there."
+function _toggle!(state::LayoutState, idx::Int)
+    idx in state.selected ? delete!(state.selected, idx) : push!(state.selected, idx)
+    return state
 end
 
 """
@@ -239,10 +267,20 @@ function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEven
         i.candidate = hit
         i.began_on_node = hit !== nothing
         i.anchor = Point2f(event.data)
+        i.band_start = nothing
+        adding = _multiselect_held(axis)
 
         if hit === nothing
-            # A press on empty space starts a rubber band, and drops the old selection.
-            deselect_all!(i.state)
+            # A press on empty space arms the rubber band. Hold shift or control to widen
+            # an existing selection instead of starting a new one.
+            i.band_start = Point2f(event.data)
+            if !adding
+                deselect_all!(i.state)
+                apply!(i)
+            end
+        elseif adding
+            # Shift/control click toggles one vertex in or out of the selection.
+            _toggle!(i.state, hit)
             apply!(i)
         elseif !isselected(i.state, hit)
             # Pressing an unselected vertex selects just it, so a drag moves only that one.
@@ -257,21 +295,47 @@ function Makie.process_interaction(i::NetworkInteraction, event::Makie.MouseEven
             group = isselected(i.state, i.candidate) ? i.state.selected : Set(i.candidate)
             i.origins = Dict(j => i.state.positions[j] for j in group)
             return true
+        elseif i.band_start !== nothing
+            i.band_plot === nothing || (i.band_plot.visible = true)
+            return true
         end
     elseif event.type === Makie.MouseEventTypes.leftdrag
         if i.dragging !== nothing && i.anchor !== nothing
             drag_group!(i.state, i.origins, Point2f(event.data) - i.anchor)
             apply!(i)
             return true
+        elseif i.band_start !== nothing
+            i.band[] = _corners_to_rect(i.band_start, Point2f(event.data))
+            return true
         end
     elseif event.type === Makie.MouseEventTypes.leftdragstop ||
            event.type === Makie.MouseEventTypes.leftup
+        banding =
+            i.band_start !== nothing && i.band_plot !== nothing && i.band_plot.visible[]
+        if banding
+            rect = i.band[]
+            keep = _multiselect_held(axis) ? copy(i.state.selected) : Set{Int}()
+            select_in!(i.state, rect)
+            union!(i.state.selected, keep)
+            i.band_plot.visible = false
+            apply!(i)
+        end
         wasdragging = i.dragging !== nothing
         i.dragging = nothing
         i.candidate = nothing
         i.anchor = nothing
+        i.band_start = nothing
         empty!(i.origins)
-        return wasdragging
+        return wasdragging || banding
+    elseif event.type === Makie.MouseEventTypes.rightclick
+        # Right-click a vertex to release just that pin.
+        nodeplot = GraphMakie.get_node_plot(graph_plot(i.plot))
+        plt, idx = Makie.pick(axis.scene)
+        if plt === nodeplot && idx isa Integer && 1 <= idx <= length(i.state.positions)
+            unpin!(i.state, Int(idx))
+            apply!(i)
+            return true
+        end
     end
     return false
 end
@@ -310,7 +374,12 @@ Make a `powerplot` interactive:
   - drag a bus with the left mouse button to place it by hand;
   - drag from empty space to rubber-band a group of buses, which are then highlighted and
     move together as one when any of them is dragged;
+  - shift- or control-click a bus to add it to (or remove it from) the selection by hand,
+    and hold either while rubber-banding to widen the selection rather than replace it;
+  - right-click a bus to release just that pin;
   - press `r` to re-run the layout around whatever is pinned, and `u` to release every pin.
+
+Dragged buses are pinned, and every pinned bus carries a small dot.
 
 Pass `rubberband = false` to leave the left-drag-on-empty-space gesture alone.
 
@@ -332,6 +401,28 @@ function interactive!(
     rubberband::Bool = true,
 )
     state = LayoutState(plot.node_pos[])
+    band = Observable(Rect2f(0, 0, 0, 0))
+
+    # The rubber band is drawn here rather than by `Makie.select_rectangle`, which is
+    # hard-wired to the left button with no way to rebind or gate it: it armed on every
+    # press, so dragging a vertex also drew a selection rectangle. Owning the band lets it
+    # arm only when the press missed every vertex.
+    band_plot = if rubberband
+        p = Makie.poly!(
+            ax.scene,
+            band;
+            color = RGBAf(0.12, 0.44, 0.85, 0.08),
+            strokecolor = RGBAf(0.12, 0.44, 0.85, 0.7),
+            strokewidth = 1.5,
+            visible = false,
+            inspectable = false,
+        )
+        Makie.translate!(p, 0, 0, 100)     # keep it above the network
+        p
+    else
+        nothing
+    end
+
     interaction = NetworkInteraction(
         plot,
         state,
@@ -340,6 +431,9 @@ function interactive!(
         nothing,
         Dict{Int,Point2f}(),
         false,
+        nothing,
+        band,
+        band_plot,
         Set{Makie.Keyboard.Button}(),
         algorithm,
     )
@@ -347,19 +441,5 @@ function interactive!(
     haskey(Makie.interactions(ax), :rectanglezoom) &&
         Makie.deregister_interaction!(ax, :rectanglezoom)
     Makie.register_interaction!(ax, name, interaction)
-
-    if rubberband
-        # `Makie.select_rectangle` is hard-wired to the left button — the same gesture that
-        # drags a vertex — and offers no way to rebind it, so both see every drag. The
-        # rectangle is ignored when the press landed on a vertex, which leaves the natural
-        # split: drag a bus to move it, drag from empty space to select.
-        rect = Makie.select_rectangle(ax.scene)
-        Makie.on(rect) do r
-            interaction.began_on_node && return nothing
-            select_in!(interaction.state, r)
-            apply!(interaction)
-            return nothing
-        end
-    end
     return interaction
 end
