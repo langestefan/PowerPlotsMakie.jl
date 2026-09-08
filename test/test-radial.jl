@@ -38,7 +38,8 @@
         return String[]
     end
 
-    PowerPlotsMakie.component_field(::Feeder, ::Symbol, ::AbstractString, ::Symbol) = missing
+    PowerPlotsMakie.component_field(::Feeder, ::Symbol, ::AbstractString, ::Symbol) =
+        missing
     PowerPlotsMakie.edge_endpoints(f::Feeder, ::Symbol, id) = f.branches[parse(Int, id)]
     PowerPlotsMakie.injection_bus(f::Feeder, comp::Symbol, id) =
         comp === :gen ? f.gens[parse(Int, id)] : f.loads[parse(Int, id)]
@@ -47,12 +48,10 @@
         get(f.coords, id, nothing)
 
     "A chain of `n` buses, `1 - 2 - … - n`."
-    chain(n; kwargs...) =
-        Feeder(n, [(string(i), string(i + 1)) for i = 1:(n - 1)]; kwargs...)
+    chain(n; kwargs...) = Feeder(n, [(string(i), string(i + 1)) for i = 1:(n-1)]; kwargs...)
 
     "A complete binary tree of `n` buses, child `i` hanging off bus `i ÷ 2`."
-    binary(n; kwargs...) =
-        Feeder(n, [(string(i ÷ 2), string(i)) for i = 2:n]; kwargs...)
+    binary(n; kwargs...) = Feeder(n, [(string(i ÷ 2), string(i)) for i = 2:n]; kwargs...)
 
     "The index of the vertex drawn for `comp[id]`."
     vertex(net, comp, id) = net.vertex_index[ComponentRef(comp, id)]
@@ -120,8 +119,7 @@ end
     @test all(p[2] < 0 for p in bus[2:end])   # everything else below it
 end
 
-@testitem "A root away from vertex 1 is renumbered" tags = [:unit, :fast] setup =
-    [Feeders] begin
+@testitem "A root away from vertex 1 is renumbered" tags = [:unit, :fast] setup = [Feeders] begin
     # Buchheim insists the root is vertex 1; here it is vertex 3, so the wrapper has to
     # renumber the component rather than pass it straight through.
     net = powernetwork(Feeders.chain(5; roots = ["3"]))
@@ -209,7 +207,7 @@ end
     ]
     # All at the same distance, all at distinct angles, none on top of another.
     @test all(≈(0.7; atol = 1e-5), [hypot((s - b2)...) for s in sats])
-    angles = sort([atan((s - b2)[2], (s - b2)[1]) for s in sats])
+    angles = sort([atan((s-b2)[2], (s-b2)[1]) for s in sats])
     @test allunique(angles)
     @test minimum(diff(angles)) > 0.5
 end

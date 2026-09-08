@@ -265,8 +265,8 @@ function _widest_gap(angles::Vector{Float64})
     a = sort(angles)
     n = length(a)
     best_start, best_width = a[n], a[1] + 2π - a[n]
-    for i = 1:(n - 1)
-        w = a[i + 1] - a[i]
+    for i = 1:(n-1)
+        w = a[i+1] - a[i]
         if w > best_width
             best_start, best_width = a[i], w
         end
