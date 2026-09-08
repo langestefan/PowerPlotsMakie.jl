@@ -45,8 +45,13 @@ Sizes are *design units*, not pixels. `autoscale` multiplies all of them — nod
 and connector widths, flow arrows, stroke widths — by a single factor, so a plot keeps its
 proportions while its absolute size follows the figure it is drawn into and the density of
 the network it is drawing. A five-bus case gets big buses, a five-hundred-bus case small
-ones, and doubling the figure doubles everything in it. Zoom is left out on purpose: nodes
-stay put in pixels as the camera moves, so zooming into a crowded corner separates them.
+ones, and doubling the figure doubles everything in it.
+
+Two things deliberately leave it alone. Zoom: nodes stay put in pixels as the camera moves,
+so zooming into a crowded corner separates them instead of magnifying them. And the layout:
+dragging a bus or re-running the layout rearranges the network without resizing anything in
+it, so the plot does not change weight under the interaction keys. The factor is remeasured
+when the network changes, when the figure is resized, and when `autoscale` is set.
 
 `autoscale = false` turns it off and leaves every size in raw pixels; a number, such as
 `autoscale = 1.4`, scales the whole plot by hand. See [`autoscale_factor`](@ref) for how
@@ -252,12 +257,18 @@ function Makie.plot!(p::PowerPlot)
         end
     end
 
+    # The factor is measured from the positions, but it deliberately does *not* list them
+    # as an input. Node sizes must hold still while the layout moves: re-running the layout
+    # or dragging a bus is a change of arrangement, not a change of what is being drawn,
+    # and markers that jump when the user presses the re-layout key read as a bug. So the
+    # positions are read here rather than depended on, and the factor is remeasured only
+    # when the network, the viewport or `autoscale` itself changes.
     map!(
         p.attributes,
-        [:autoscale, :node_pos, :viewport_size],
+        [:autoscale, :network, :viewport_size],
         :autoscale_factor,
-    ) do request, positions, viewport
-        return resolve_autoscale(request, positions, viewport)
+    ) do request, _, viewport
+        return resolve_autoscale(request, p.node_pos[], viewport)
     end
 
     map!(p.attributes, [:network, :parallel_spread], :curve_distances) do net, spread

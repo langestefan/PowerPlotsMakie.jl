@@ -83,7 +83,9 @@ use, so doubling the figure doubles every size in it.
 
 Zoom is deliberately *not* one of them. Markers stay put in pixels while the camera moves,
 which is what makes zooming into a dense corner of a network useful — the buses separate
-instead of growing with it.
+instead of growing with it. Neither is the layout: the recipe measures the positions but
+does not track them, so dragging a bus or re-running the layout rearranges the network
+without resizing anything in it.
 
 The result is clamped: never below [`MIN_NODE_PIXELS`](@ref), never above
 [`MAX_NODE_VIEWPORT_FRACTION`](@ref) of the viewport's shorter side. It falls back to `1.0`

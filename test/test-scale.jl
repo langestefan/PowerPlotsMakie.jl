@@ -155,6 +155,42 @@ end
     @test p.autoscale_factor[] > before
 end
 
+@testitem "Node sizes hold still while the layout moves" tags = [:integration] setup =
+    [ScaleTools] begin
+    f, ax, p = powerplot(readcase("case14.m"))
+    factor = p.autoscale_factor[]
+    sizes = copy(p.gp_node_size[])
+
+    # A drag: positions written straight into `layout`, which is what the interaction
+    # layer does on every mouse move.
+    dragged = copy(p.node_pos[])
+    dragged[1] = dragged[1] + Point2f(5, 5)
+    p.layout = dragged
+    @test p.autoscale_factor[] == factor
+    @test p.gp_node_size[] == sizes
+
+    # And a re-layout, which rearranges everything. Markers that jumped when the user
+    # pressed the re-layout key would read as a bug, not as a feature.
+    for algorithm in (:stress, :radial)
+        p.layout = algorithm
+        @test p.autoscale_factor[] == factor
+        @test p.gp_node_size[] == sizes
+    end
+end
+
+@testitem "A different network is measured afresh" tags = [:integration] setup =
+    [ScaleTools] begin
+    f, ax, p = powerplot(readcase("case14.m"))
+    crowded = p.autoscale_factor[]
+
+    p[1] = powernetwork(readcase("case5.m"))
+    # Fewer buses in the same figure, so there is room for bigger ones.
+    @test p.autoscale_factor[] > crowded
+
+    p.autoscale = 2.0
+    @test p.autoscale_factor[] == 2.0
+end
+
 @testitem "The legend swatch is the size of the marker it describes" tags = [:integration] setup =
     [ScaleTools] begin
     case = readcase("case14.m")
