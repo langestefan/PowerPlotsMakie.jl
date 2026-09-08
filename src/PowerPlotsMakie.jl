@@ -12,7 +12,7 @@ extension, loaded by `using PowerModels`.
 module PowerPlotsMakie
 
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
-using GeometryBasics: Point2f
+using GeometryBasics: Point2f, Vec2f, widths
 using Colors: Colorant, RGB
 using Makie:
     Makie,
@@ -23,6 +23,7 @@ using Makie:
     LineElement,
     MarkerElement,
     Observable,
+    on,
     RGBAf,
     Rect2f,
     scatter!,
@@ -40,6 +41,8 @@ include("interface.jl")
 include("network.jl")
 # Palettes and the resolution of colour/size specifications into per-index vectors.
 include("attributes.jl")
+# Turning design units into pixels for the figure at hand.
+include("scale.jl")
 # Radial detection and the Buchheim tree layout.
 include("radial.jl")
 # Vertex positioning, pinning and pre-existing coordinates.
@@ -60,6 +63,7 @@ include("precompile.jl")
 export powerplot, powerplot!, Field
 export powerlegend!, powercolorbar!, legend_entries, legend_groups, LegendEntry
 export flow_arrows, flow_field, FlowArrows
+export autoscale_factor, nearest_neighbor_spacing
 export academic_theme, ACADEMIC_COMPONENTS
 export interactive!, relayout!, resync!, LayoutState
 export drag!, drag_group!, pin!, unpin!, unpin_all!, ispinned

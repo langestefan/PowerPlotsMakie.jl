@@ -39,6 +39,19 @@ A colour is constant unless it is wrapped in [`Field`](@ref), which names a data
 colour by; numeric fields get a continuous ramp and everything else a categorical palette,
 overridable with `colormode`.
 
+# Sizing
+
+Sizes are *design units*, not pixels. `autoscale` multiplies all of them — node sizes, edge
+and connector widths, flow arrows, stroke widths — by a single factor, so a plot keeps its
+proportions while its absolute size follows the figure it is drawn into and the density of
+the network it is drawing. A five-bus case gets big buses, a five-hundred-bus case small
+ones, and doubling the figure doubles everything in it. Zoom is left out on purpose: nodes
+stay put in pixels as the camera moves, so zooming into a crowded corner separates them.
+
+`autoscale = false` turns it off and leaves every size in raw pixels; a number, such as
+`autoscale = 1.4`, scales the whole plot by hand. See [`autoscale_factor`](@ref) for how
+the automatic factor is arrived at.
+
 # Flow arrows
 
 `flow = true` draws an arrow along every branch that has a `pf` value — which a PowerModels
@@ -63,6 +76,9 @@ settings are lost in the process.
         parallel_spread = 0.2,
         components = Dict{Symbol,Any}(),
         component_defaults = Dict{Symbol,Any}(),
+
+        # --- sizing --------------------------------------------------------------------
+        autoscale = :auto,
 
         # --- nodes ---------------------------------------------------------------------
         node_color = nothing,
@@ -147,6 +163,9 @@ edge shares a style.
 """
 _collapse(v::AbstractVector) = isempty(v) ? v : (all(x -> x == first(v), v) ? first(v) : v)
 
+"A style bundle's sizes in pixels — see [`autoscale_factor`](@ref)."
+_scaled_sizes(bundle::StyleBundle, scale::Real) = bundle.sizes .* scale
+
 "Fetch `field` for the given indices of a vertex or edge column."
 function _values(net, kind::Symbol, field, idx)
     field === nothing && return fill(missing, length(idx))
@@ -210,11 +229,35 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, presets, components, 
     return StyleBundle(colors, sizes, markers, strokecolors, linestyles, results)
 end
 
+"The drawing area in pixels, or a zero size when the plot has no scene to ask."
+_viewport_size(::Nothing) = Vec2f(0, 0)
+_viewport_size(scene::Makie.Scene) = Vec2f(widths(scene.viewport[]))
+
 function Makie.plot!(p::PowerPlot)
     # Vertex positions. This is the one genuinely reactive quantity: the interaction layer
     # re-runs the layout by writing to `layout`/`pin`, and everything downstream follows.
     map!(p.attributes, [:network, :layout, :pin], :node_pos) do net, layout, pin
         return layout_positions(_as_network(net); layout = layout, pin = pin)
+    end
+
+    # How big everything is drawn. The viewport belongs to the scene rather than to the
+    # plot, so it is fed into the compute graph by hand and kept current for as long as the
+    # plot lives — that is what makes sizes follow a resized window or a larger `Figure`.
+    scene = Makie.parent_scene(p)
+    Makie.ComputePipeline.add_input!(p.attributes, :viewport_size, _viewport_size(scene))
+    if scene !== nothing
+        on(p, scene.viewport) do viewport
+            p.viewport_size = Vec2f(widths(viewport))
+            return
+        end
+    end
+
+    map!(
+        p.attributes,
+        [:autoscale, :node_pos, :viewport_size],
+        :autoscale_factor,
+    ) do request, positions, viewport
+        return resolve_autoscale(request, positions, viewport)
     end
 
     map!(p.attributes, [:network, :parallel_spread], :curve_distances) do net, spread
@@ -334,12 +377,17 @@ function Makie.plot!(p::PowerPlot)
     end
 
     map!(x -> x.colors, p.attributes, :node_style, :gp_node_color)
-    map!(x -> x.sizes, p.attributes, :node_style, :gp_node_size)
     map!(x -> _collapse(x.markers), p.attributes, :node_style, :gp_node_marker)
     map!(x -> _collapse(x.strokecolors), p.attributes, :node_style, :gp_node_strokecolor)
     map!(x -> x.colors, p.attributes, :edge_style, :gp_edge_color)
-    map!(x -> x.sizes, p.attributes, :edge_style, :gp_edge_width)
     map!(x -> _collapse(x.linestyles), p.attributes, :edge_style, :gp_edge_linestyle)
+
+    # Design units become pixels here, and nowhere else. Scaling at the very last step keeps
+    # the style resolution — which is the expensive part — independent of the layout, so a
+    # drag re-scales the sizes without re-resolving every component's colour.
+    map!(_scaled_sizes, p.attributes, [:node_style, :autoscale_factor], :gp_node_size)
+    map!(_scaled_sizes, p.attributes, [:edge_style, :autoscale_factor], :gp_edge_width)
+    map!(*, p.attributes, [:node_strokewidth, :autoscale_factor], :gp_node_strokewidth)
 
     graph = _as_network(p.network[]).graph
     graphplot!(
@@ -351,7 +399,7 @@ function Makie.plot!(p::PowerPlot)
         node_marker = p.gp_node_marker,
         # Makie takes scatter stroke width as a uniform, so this stays plot-level rather
         # than being resolved per component.
-        node_strokewidth = p.node_strokewidth,
+        node_strokewidth = p.gp_node_strokewidth,
         node_strokecolor = p.gp_node_strokecolor,
         edge_color = p.gp_edge_color,
         edge_width = p.gp_edge_width,
@@ -367,10 +415,11 @@ function Makie.plot!(p::PowerPlot)
     # `flow` asks for it, so a plot of a case with no solution pays nothing.
     map!(
         p.attributes,
-        [:network, :node_pos, :curve_distances, :flow, :flow_size],
+        [:network, :node_pos, :curve_distances, :flow, :flow_size, :autoscale_factor],
         :flow_arrows,
-    ) do net, pos, curves, flow, sizerange
-        return flow_arrows(_as_network(net), pos, curves, flow, sizerange)
+    ) do net, pos, curves, flow, sizerange, scale
+        scaled = (first(sizerange) * scale, last(sizerange) * scale)
+        return flow_arrows(_as_network(net), pos, curves, flow, scaled)
     end
     map!(a -> a.positions, p.attributes, :flow_arrows, :flow_pos)
     map!(a -> a.rotations, p.attributes, :flow_arrows, :flow_rotation)
@@ -395,19 +444,25 @@ function Makie.plot!(p::PowerPlot)
     end
     map!(
         p.attributes,
-        [:node_style, :selection, :selection_scale],
+        [:gp_node_size, :selection, :selection_scale],
         :selection_markersize,
-    ) do style, sel, scale
-        idx = _selected_indices(sel, length(style.sizes))
-        return Float64[style.sizes[i] * scale for i in idx]
+    ) do sizes, sel, scale
+        idx = _selected_indices(sel, length(sizes))
+        return Float64[sizes[i] * scale for i in idx]
     end
+    map!(
+        *,
+        p.attributes,
+        [:selection_strokewidth, :autoscale_factor],
+        :gp_selection_strokewidth,
+    )
     scatter!(
         p,
         p.selection_pos;
         markersize = p.selection_markersize,
         color = RGBAf(0, 0, 0, 0),
         strokecolor = p.selection_color,
-        strokewidth = p.selection_strokewidth,
+        strokewidth = p.gp_selection_strokewidth,
     )
 
     # Pinned marker: a small dot at the centre of every vertex the layout may not move.
@@ -417,19 +472,20 @@ function Makie.plot!(p::PowerPlot)
     end
     map!(
         p.attributes,
-        [:node_style, :pinned, :pinned_scale],
+        [:gp_node_size, :pinned, :pinned_scale],
         :pinned_markersize,
-    ) do style, pinned, scale
-        idx = _selected_indices(pinned, length(style.sizes))
-        return Float64[style.sizes[i] * scale for i in idx]
+    ) do sizes, pinned, scale
+        idx = _selected_indices(pinned, length(sizes))
+        return Float64[sizes[i] * scale for i in idx]
     end
+    map!(*, p.attributes, [:pinned_strokewidth, :autoscale_factor], :gp_pinned_strokewidth)
     scatter!(
         p,
         p.pinned_pos;
         markersize = p.pinned_markersize,
         color = p.pinned_color,
         strokecolor = p.pinned_strokecolor,
-        strokewidth = p.pinned_strokewidth,
+        strokewidth = p.gp_pinned_strokewidth,
     )
     return p
 end

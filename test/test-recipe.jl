@@ -114,6 +114,8 @@ end
         case;
         node_color = :black,
         components = Dict(:gen => (color = :red, size = 30.0)),
+        # Sizes here are the design units, not the pixels they scale to.
+        autoscale = false,
     )
     colors = p.gp_node_color[]
     @test all(==(RGBAf(1, 0, 0, 1)), colors[vertex_indices(net, :gen)])

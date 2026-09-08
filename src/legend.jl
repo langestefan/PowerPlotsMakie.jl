@@ -36,14 +36,17 @@ function legend_entries(p::PowerPlot; components = nothing)
     net = _as_network(p.network[])
     out = LegendEntry[]
     # Stroke width is a scatter uniform, so it is plot-level rather than per component.
-    stroke = Float64(Makie.to_value(p.node_strokewidth))
+    stroke = Float64(Makie.to_value(p.gp_node_strokewidth))
+    # Swatch sizes are the drawn sizes, so a key next to an automatically scaled plot shows
+    # markers the size of the markers it is describing.
+    scale = Float64(Makie.to_value(p.autoscale_factor))
     for role in (NodeRole(), InjectionRole())
         for comp in present_components(net, role)
-            _push_entry!(out, net, p.node_style[], comp, :node, components, stroke)
+            _push_entry!(out, net, p.node_style[], comp, :node, components, stroke, scale)
         end
     end
     for comp in present_components(net, EdgeRole())
-        _push_entry!(out, net, p.edge_style[], comp, :edge, components, stroke)
+        _push_entry!(out, net, p.edge_style[], comp, :edge, components, stroke, scale)
     end
     return out
 end
@@ -58,6 +61,7 @@ function _push_entry!(
     role::Symbol,
     wanted,
     strokewidth::Float64,
+    scale::Float64,
 )
     wanted === nothing || comp in wanted || return out
     result = get(bundle.results, comp, nothing)
@@ -74,7 +78,7 @@ function _push_entry!(
             result,
             role === :node ? bundle.markers[i] : nothing,
             role === :edge ? bundle.linestyles[i] : nothing,
-            bundle.sizes[i],
+            bundle.sizes[i] * scale,
             bundle.strokecolors[i],
             strokewidth,
         ),
@@ -97,6 +101,20 @@ _swatch(e::LegendEntry, color) =
         strokecolor = e.strokecolor,
         strokewidth = e.strokewidth,
     ) : LineElement(; color = color, linestyle = e.linestyle, linewidth = e.size)
+
+"""
+Room a swatch needs, in pixels.
+
+Makie's default patch is 20 px square, which an automatically scaled plot's markers can
+easily outgrow — and a swatch wider than its patch runs over the label beside it. Only ever
+grows the patch, so a small plot keeps Makie's proportions.
+"""
+function _patchsize(entries)
+    isempty(entries) && return (20.0f0, 20.0f0)
+    biggest = maximum(e.size + 2 * e.strokewidth for e in entries)
+    side = Float32(max(20.0, biggest + 4.0))
+    return (side, side)
+end
 
 "Title Makie gives the group of components drawn in a single flat colour."
 const COMPONENT_GROUP_TITLE = "component"
@@ -225,6 +243,7 @@ function powerlegend!(pos, p::PowerPlot; components = nothing, colorbar = (;), k
             titles;
             tellheight = true,
             valign = :top,
+            patchsize = _patchsize(entries),
             kwargs...,
         )
     end
