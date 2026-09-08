@@ -11,6 +11,22 @@ and always runs.
 """
 const HAS_DISPLAY = haskey(ENV, "DISPLAY") || haskey(ENV, "WAYLAND_DISPLAY")
 
-HAS_DISPLAY || @info "No display detected: skipping test items tagged :interactive"
+"""
+Whether GLMakie can be loaded at all.
 
-@run_package_tests filter = ti -> (HAS_DISPLAY || !(:interactive in ti.tags)) verbose = true
+It is deliberately not a declared test dependency — see the `GL` snippet in
+`test-interaction.jl` — so it is reached through the shared workspace manifest and may
+simply not be installed. A checkout that has never instantiated `examples/` is a normal
+state, not a failure.
+"""
+const HAS_GLMAKIE =
+    Base.locate_package(
+        Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie"),
+    ) !== nothing
+
+const RUN_INTERACTIVE = HAS_DISPLAY && HAS_GLMAKIE
+
+RUN_INTERACTIVE || @info "Skipping test items tagged :interactive" HAS_DISPLAY HAS_GLMAKIE
+
+@run_package_tests filter = ti -> (RUN_INTERACTIVE || !(:interactive in ti.tags)) verbose =
+    true

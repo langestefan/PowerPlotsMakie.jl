@@ -24,6 +24,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
+# The repository default is a read-only GITHUB_TOKEN, so `deploydocs` cannot push the
+# gh-pages branch without asking for write here.
+permissions:
+  contents: write
+
 jobs:
   docs:
     name: Documentation

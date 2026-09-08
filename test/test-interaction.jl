@@ -10,6 +10,21 @@
         LayoutState([Point2f(cos(t), sin(t)) for t in range(0, 2π; length = 7)[1:6]])
 end
 
+@testsnippet GL begin
+    # GLMakie is deliberately *not* a dependency of the test project. It cannot be
+    # precompiled without a display and a GL context — headless Linux, macOS and Windows
+    # runners all fail differently but fail — and a direct dependency that will not
+    # precompile takes the whole test environment down before a single test runs. Since
+    # `examples/` does depend on it, it is in the shared workspace manifest, and that is
+    # enough for `Base.require` to load it on a machine that can actually open a window.
+    # `runtests.jl` skips everything tagged `:interactive` when it cannot be reached.
+    const GLMakie = Base.require(
+        Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie"),
+    )
+    const Makie = GLMakie.Makie
+    using .Makie: Axis, Figure, KeyEvent, Keyboard, Mouse, MouseButtonEvent, Point2f, events
+end
+
 @testitem "drag! moves and pins" tags = [:unit, :fast] setup = [InteractionTools] begin
     s = ringstate()
     @test isempty(s.pinned)
@@ -249,12 +264,9 @@ end
     @test isempty(plt.pinned[])
 end
 
-@testitem "Right-click releases one pin" tags = [:interactive] begin
+@testitem "Right-click releases one pin" tags = [:interactive] setup = [GL] begin
     using PowerPlotsMakie
     using PowerModels
-    using GLMakie
-    import GLMakie.Makie
-    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
 
     PowerModels.silence()
     case = PowerModels.parse_file(
@@ -286,12 +298,9 @@ end
     @test plt.pinned[] == [2]
 end
 
-@testitem "Shift-click extends the selection" tags = [:interactive] begin
+@testitem "Shift-click extends the selection" tags = [:interactive] setup = [GL] begin
     using PowerPlotsMakie
     using PowerModels
-    using GLMakie
-    import GLMakie.Makie
-    using GLMakie.Makie: Mouse, MouseButtonEvent, Keyboard, KeyEvent, events, Point2f
 
     PowerModels.silence()
     case = PowerModels.parse_file(
@@ -330,14 +339,12 @@ end
     e.keyboardbutton[] = KeyEvent(Keyboard.left_shift, Keyboard.release)
 end
 
-@testitem "A synthetic rubber band selects and moves a group" tags = [:interactive] begin
+@testitem "A synthetic rubber band selects and moves a group" tags = [:interactive] setup =
+    [GL] begin
     # The `select_rectangle` wiring can only be checked through the real event pipeline:
     # it listens on raw mouse observables, not on our interaction.
     using PowerPlotsMakie
     using PowerModels
-    using GLMakie
-    import GLMakie.Makie
-    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
 
     PowerModels.silence()
     case = PowerModels.parse_file(
@@ -391,16 +398,13 @@ end
     @test all(i -> after[i] - before[i] ≈ delta, eachindex(after))
 end
 
-@testitem "A synthetic mouse drag moves a bus" tags = [:interactive] begin
+@testitem "A synthetic mouse drag moves a bus" tags = [:interactive] setup = [GL] begin
     # Drives the real Makie event pipeline rather than calling `drag!` directly. The
     # earlier tests exercised only the state machine, which is exactly why a bug in the
     # event handling (picking at `leftdragstart`, after the pointer has left the node)
     # went unnoticed. Needs GLMakie: CairoMakie has no picking.
     using PowerPlotsMakie
     using PowerModels
-    using GLMakie
-    import GLMakie.Makie
-    using GLMakie.Makie: Mouse, MouseButtonEvent, events, Point2f
 
     PowerModels.silence()
     case = PowerModels.parse_file(

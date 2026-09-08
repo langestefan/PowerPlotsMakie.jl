@@ -3,6 +3,11 @@ exclude = [
   "@[Cc]ite.*",
   "^https://github.com/.*/releases/tag/v.*$",
   "^https://doi.org/FIXME$",
+  # Nothing is published yet: there is no released tag to compare against, and the
+  # documentation site does not exist until GitHub Pages is enabled for gh-pages. Drop
+  # these three once v0.1.0 is tagged and the docs are live.
+  "^https://github.com/langestefan/PowerPlotsMakie.jl/compare/v0.1.0\\.\\.\\.HEAD$",
+  "^https://langestefan.github.io/PowerPlotsMakie.jl/dev",
   "^https://langestefan.github.io/PowerPlotsMakie.jl/stable/?$",
   "^https://blog.esciencecenter.nl", # due to a certificate error (cf. #556)
   "zenodo.org/badge/DOI/FIXME$"

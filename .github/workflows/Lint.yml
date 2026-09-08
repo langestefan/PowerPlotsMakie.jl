@@ -28,8 +28,15 @@ jobs:
         uses: julia-actions/cache@v3
       - name: Build package (required for ExplicitImports)
         uses: julia-actions/julia-buildpkg@v1
-      - name: Install ExplicitImports
-        run: 'using Pkg; Pkg.add("ExplicitImports")'
+      # The julia-formatter hook runs `julia -e 'import JuliaFormatter'` against the
+      # default environment, so JuliaFormatter has to be installed there. Pin it: a
+      # different minor version formats differently, and the committed code is formatted
+      # by whatever developers run locally through prek.
+      - name: Install lint tools
+        run: |
+          using Pkg
+          Pkg.add("ExplicitImports")
+          Pkg.add(PackageSpec(name = "JuliaFormatter", version = v"2.12.4"))
         shell: julia --color=yes {0}
       - name: Run prek
         uses: j178/prek-action@v3.0.0
