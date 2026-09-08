@@ -14,6 +14,8 @@ struct LegendEntry
     marker::Any             # nodes only
     linestyle::Any          # edges only
     size::Float64           # markersize for nodes, linewidth for edges
+    strokecolor::RGBAf      # nodes only
+    strokewidth::Float64    # nodes only
 end
 
 """
@@ -33,20 +35,30 @@ The entries are a snapshot. Restyling the plot afterwards updates the colours a
 function legend_entries(p::PowerPlot; components = nothing)
     net = _as_network(p.network[])
     out = LegendEntry[]
+    # Stroke width is a scatter uniform, so it is plot-level rather than per component.
+    stroke = Float64(Makie.to_value(p.node_strokewidth))
     for role in (NodeRole(), InjectionRole())
         for comp in present_components(net, role)
-            _push_entry!(out, net, p.node_style[], comp, :node, components)
+            _push_entry!(out, net, p.node_style[], comp, :node, components, stroke)
         end
     end
     for comp in present_components(net, EdgeRole())
-        _push_entry!(out, net, p.edge_style[], comp, :edge, components)
+        _push_entry!(out, net, p.edge_style[], comp, :edge, components, stroke)
     end
     return out
 end
 
 legend_entries(p::Makie.FigureAxisPlot; kwargs...) = legend_entries(p.plot; kwargs...)
 
-function _push_entry!(out, net, bundle::StyleBundle, comp::Symbol, role::Symbol, wanted)
+function _push_entry!(
+    out,
+    net,
+    bundle::StyleBundle,
+    comp::Symbol,
+    role::Symbol,
+    wanted,
+    strokewidth::Float64,
+)
     wanted === nothing || comp in wanted || return out
     result = get(bundle.results, comp, nothing)
     # `:explicit` colours came in as a per-index vector: there is nothing to label.
@@ -63,16 +75,28 @@ function _push_entry!(out, net, bundle::StyleBundle, comp::Symbol, role::Symbol,
             role === :node ? bundle.markers[i] : nothing,
             role === :edge ? bundle.linestyles[i] : nothing,
             bundle.sizes[i],
+            bundle.strokecolors[i],
+            strokewidth,
         ),
     )
     return out
 end
 
-"A swatch shaped like the component it stands for: a marker for nodes, a line for edges."
+"""
+A swatch shaped like the component it stands for: a marker for nodes, a line for edges.
+
+The stroke comes along for the ride, because an academic figure draws its generators as an
+open marker and a white swatch on a white legend is no swatch at all.
+"""
 _swatch(e::LegendEntry, color) =
     e.role === :node ?
-    MarkerElement(; color = color, marker = e.marker, markersize = e.size) :
-    LineElement(; color = color, linestyle = e.linestyle, linewidth = e.size)
+    MarkerElement(;
+        color = color,
+        marker = e.marker,
+        markersize = e.size,
+        strokecolor = e.strokecolor,
+        strokewidth = e.strokewidth,
+    ) : LineElement(; color = color, linestyle = e.linestyle, linewidth = e.size)
 
 "Title Makie gives the group of components drawn in a single flat colour."
 const COMPONENT_GROUP_TITLE = "component"

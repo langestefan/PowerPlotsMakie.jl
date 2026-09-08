@@ -44,10 +44,14 @@ include("attributes.jl")
 include("radial.jl")
 # Vertex positioning, pinning and pre-existing coordinates.
 include("layouts.jl")
+# Power-flow arrow geometry.
+include("flow.jl")
 # The Makie recipe itself.
 include("recipe.jl")
 # Legends and colorbars, which Makie builds for no plot automatically.
 include("legend.jl")
+# The academic preset.
+include("theme.jl")
 # Opt-in dragging, pinning and re-layout.
 include("interaction.jl")
 # Warm the plotting path at build time rather than on first use.
@@ -55,6 +59,8 @@ include("precompile.jl")
 
 export powerplot, powerplot!, Field
 export powerlegend!, powercolorbar!, legend_entries, legend_groups, LegendEntry
+export flow_arrows, flow_field, FlowArrows
+export academic_theme, ACADEMIC_COMPONENTS
 export interactive!, relayout!, resync!, LayoutState
 export drag!, drag_group!, pin!, unpin!, unpin_all!, ispinned
 export select!, select_in!, deselect_all!, isselected

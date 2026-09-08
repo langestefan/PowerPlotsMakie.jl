@@ -39,9 +39,21 @@ A colour is constant unless it is wrapped in [`Field`](@ref), which names a data
 colour by; numeric fields get a continuous ramp and everything else a categorical palette,
 overridable with `colormode`.
 
-Note that `components` must be a `Dict` (or a vector of pairs). A NamedTuple cannot be used
-here: Makie converts NamedTuple-valued attributes to `Attributes` and the nested
-per-component settings are lost in the process.
+# Flow arrows
+
+`flow = true` draws an arrow along every branch that has a `pf` value — which a PowerModels
+case has once a solution has been merged into it — pointing the way the power goes and
+sized by how much of it there is. `flow = Field(:qf)` follows a different field. See
+[`flow_arrows`](@ref) for the geometry, and `flow_color`, `flow_marker` and `flow_size` for
+the styling.
+
+`component_defaults` takes the same shape and sits underneath `components`, which is where
+a theme puts its per-component styling — see [`academic_theme`](@ref). Setting `components`
+overrides it component by component rather than wholesale.
+
+Note that both must be a `Dict` (or a vector of pairs). A NamedTuple cannot be used here:
+Makie converts NamedTuple-valued attributes to `Attributes` and the nested per-component
+settings are lost in the process.
 """
 @recipe(PowerPlot, network) do scene
     Attributes(
@@ -50,6 +62,7 @@ per-component settings are lost in the process.
         pin = nothing,
         parallel_spread = 0.2,
         components = Dict{Symbol,Any}(),
+        component_defaults = Dict{Symbol,Any}(),
 
         # --- nodes ---------------------------------------------------------------------
         node_color = nothing,
@@ -75,6 +88,12 @@ per-component settings are lost in the process.
         connector_color = nothing,
         connector_width = 1.0,
         connector_linestyle = :dash,
+
+        # --- flow arrows ---------------------------------------------------------------
+        flow = false,
+        flow_color = :black,
+        flow_marker = :utriangle,
+        flow_size = (6.0, 18.0),
 
         # --- selection highlight -------------------------------------------------------
         selection = Int[],
@@ -136,15 +155,20 @@ function _values(net, kind::Symbol, field, idx)
 end
 
 """
-    _style(net, kind, defaults, components, schemes) -> StyleBundle
+    _style(net, kind, defaults, presets, components, schemes) -> StyleBundle
 
 Resolve every styling attribute for one side of the graph into per-index vectors.
 
 Components are resolved one type at a time, because the palette slot, the colour mode and
 the colour range are all per-component: that is what lets buses be coloured by voltage on a
 viridis ramp while branches are coloured categorically, inside a single `graphplot`.
+
+Three layers, each overriding the one before: the role-level attributes, then `presets`
+(the `component_defaults` a theme supplies), then the caller's own `components`. The middle
+layer exists so that a theme can say what a generator looks like without a caller who
+restyles the buses silently discarding it.
 """
-function _style(net::PowerNetwork, kind::Symbol, defaults, components, schemes)
+function _style(net::PowerNetwork, kind::Symbol, defaults, presets, components, schemes)
     refs = kind === :node ? net.vertices : net.edges
     n = length(refs)
 
@@ -158,7 +182,7 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, components, schemes)
     for comp in unique(r.component for r in refs)
         idx = findall(r -> r.component === comp, refs)
         base = comp === CONNECTOR ? defaults.connector : defaults.main
-        spec = merge(base, component_spec(components, comp))
+        spec = merge(base, component_spec(presets, comp), component_spec(components, comp))
 
         colorfield = get(spec, :color, nothing) isa Field ? spec.color.name : nothing
         result = resolve_color(
@@ -200,6 +224,7 @@ function Makie.plot!(p::PowerPlot)
     node_inputs = [
         :network,
         :components,
+        :component_defaults,
         :node_color,
         :node_size,
         :node_marker,
@@ -216,6 +241,7 @@ function Makie.plot!(p::PowerPlot)
         :node_style,
     ) do net,
     components,
+    presets,
     color,
     size,
     marker,
@@ -242,6 +268,7 @@ function Makie.plot!(p::PowerPlot)
             network,
             :node,
             (main = main, connector = main),
+            presets,
             components,
             assign_schemes(network),
         )
@@ -250,6 +277,7 @@ function Makie.plot!(p::PowerPlot)
     edge_inputs = [
         :network,
         :components,
+        :component_defaults,
         :edge_color,
         :edge_width,
         :edge_linestyle,
@@ -267,6 +295,7 @@ function Makie.plot!(p::PowerPlot)
         :edge_style,
     ) do net,
     components,
+    presets,
     color,
     width,
     linestyle,
@@ -298,6 +327,7 @@ function Makie.plot!(p::PowerPlot)
             network,
             :edge,
             (main = main, connector = connector),
+            presets,
             components,
             assign_schemes(network),
         )
@@ -331,6 +361,27 @@ function Makie.plot!(p::PowerPlot)
         # parallel circuits drawn exactly on top of each other.
         curve_distance_usage = true,
         p.graphplot_attr[]...,
+    )
+
+    # Flow arrows, drawn over the branches they describe. Nothing is computed unless
+    # `flow` asks for it, so a plot of a case with no solution pays nothing.
+    map!(
+        p.attributes,
+        [:network, :node_pos, :curve_distances, :flow, :flow_size],
+        :flow_arrows,
+    ) do net, pos, curves, flow, sizerange
+        return flow_arrows(_as_network(net), pos, curves, flow, sizerange)
+    end
+    map!(a -> a.positions, p.attributes, :flow_arrows, :flow_pos)
+    map!(a -> a.rotations, p.attributes, :flow_arrows, :flow_rotation)
+    map!(a -> a.sizes, p.attributes, :flow_arrows, :flow_markersize)
+    scatter!(
+        p,
+        p.flow_pos;
+        rotation = p.flow_rotation,
+        markersize = p.flow_markersize,
+        marker = p.flow_marker,
+        color = p.flow_color,
     )
 
     # Selection highlight: a ring drawn over each selected vertex.

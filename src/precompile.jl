@@ -36,6 +36,8 @@ function component_field(
 )
     field === :vm && comp === :bus && return 1.0 + parse(Int, id) / 100
     field === :kind && return isodd(parse(Int, id)) ? "a" : "b"
+    # A stand-in for a merged solution, so the flow-arrow path is traced too.
+    field === :pf && comp === :branch && return isodd(parse(Int, id)) ? 10.0 : -20.0
     return missing
 end
 
@@ -59,6 +61,7 @@ reference_nodes(::_PrecompileFixture) = ["1"]
         # The fixture has a parallel circuit, so `:auto` resolves to Stress and the
         # Buchheim path would otherwise never be traced here.
         powerplot(net; layout = :radial)
+        powerplot(net; flow = true)
         continuous = powerplot(net; components = Dict(:bus => (color = Field(:vm),)))
         # The key is a second, quite separate stack of Makie code — Legend and Colorbar
         # blocks — and it is what a publication-quality plot needs next.
