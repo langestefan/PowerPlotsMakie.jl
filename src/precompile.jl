@@ -54,8 +54,11 @@ reference_nodes(::_PrecompileFixture) = ["1"]
     @compile_workload begin
         net = powernetwork(fixture)
 
-        # A default plot, and the two data-driven colour modes.
+        # A default plot, the tree layout, and the two data-driven colour modes.
         powerplot(net)
+        # The fixture has a parallel circuit, so `:auto` resolves to Stress and the
+        # Buchheim path would otherwise never be traced here.
+        powerplot(net; layout = :radial)
         powerplot(net; components = Dict(:bus => (color = Field(:vm),)))
         powerplot(
             net;

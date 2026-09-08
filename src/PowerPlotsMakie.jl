@@ -27,6 +27,8 @@ include("interface.jl")
 include("network.jl")
 # Palettes and the resolution of colour/size specifications into per-index vectors.
 include("attributes.jl")
+# Radial detection and the Buchheim tree layout.
+include("radial.jl")
 # Vertex positioning, pinning and pre-existing coordinates.
 include("layouts.jl")
 # The Makie recipe itself.
@@ -43,6 +45,7 @@ export select!, select_in!, deselect_all!, isselected
 export PowerNetwork, powernetwork
 export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge
+export RadialTree, isradial, radial_tree, layout_positions
 export vertex_column, edge_column, vertex_components, edge_components
 export vertex_indices, edge_indices, present_components
 

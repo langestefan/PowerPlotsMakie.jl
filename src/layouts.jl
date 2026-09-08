@@ -24,7 +24,13 @@ Position every vertex of `net`.
 
 `layout` accepts:
 
-  - `:auto` — pick an algorithm for this network (currently `Stress`);
+  - `:auto` — pick an algorithm for this network: [`RadialTree`](@ref) when the buses and
+    branches form a forest ([`isradial`](@ref)), `Stress` otherwise. Data-supplied
+    coordinates or an explicit `pin` force `Stress`, since it is the choice that can honour
+    them;
+  - `:radial` — a [`RadialTree`](@ref) rooted at the reference buses, whether or not the
+    network is a forest;
+  - `:stress` — stress majorization, honouring `pin`;
   - a NetworkLayout algorithm, e.g. `Stress()` or `Spring(; C = 3)`;
   - a vector of points, one per vertex, used as given;
   - any callable `graph -> positions`.
@@ -49,7 +55,7 @@ function layout_positions(net::PowerNetwork; layout = :auto, pin = nothing)
 
     fixed = fixed_positions(net)
     pinned = _pin_dict(pin, fixed, n)
-    algorithm = _layout_algorithm(layout, fixed, pinned)
+    algorithm = _layout_algorithm(net, layout, fixed, pinned)
     return Point2f[Point2f(p) for p in algorithm(net.graph)]
 end
 
@@ -74,8 +80,17 @@ function _pin_dict(pin, fixed::Dict{Int,Point2f}, n::Int)
     return out
 end
 
-function _layout_algorithm(layout, fixed, pinned)
-    if layout === :auto || layout === :stress
+function _layout_algorithm(net, layout, fixed, pinned)
+    if layout === :auto
+        # Coordinates from the data, or vertices the caller wants held, are a layout that
+        # already exists in part; only the iterative algorithms can build around one.
+        free = isempty(fixed) && isempty(pinned)
+        layout = free && isradial(net) ? :radial : :stress
+    end
+
+    if layout === :radial
+        return radial_tree(net)
+    elseif layout === :stress
         return isempty(fixed) && isempty(pinned) ? NetworkLayout.Stress() :
                NetworkLayout.Stress(; initialpos = fixed, pin = pinned)
     elseif layout isa NetworkLayout.AbstractLayout
@@ -84,7 +99,9 @@ function _layout_algorithm(layout, fixed, pinned)
         return layout
     elseif layout isa Symbol
         throw(
-            ArgumentError("unknown layout $(repr(layout)); expected :auto or an algorithm"),
+            ArgumentError(
+                "unknown layout $(repr(layout)); expected :auto, :radial, :stress or an algorithm",
+            ),
         )
     end
     return layout
