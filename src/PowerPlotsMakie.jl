@@ -17,6 +17,7 @@ using Colors: Colorant, RGB
 using Makie: Makie, Attributes, RGBAf, scatter!, to_color, @recipe
 using GraphMakie: GraphMakie, graphplot!
 import NetworkLayout
+using PrecompileTools: @compile_workload, @setup_workload
 
 # The topological backbone: an undirected graph that keeps parallel circuits distinct.
 include("graph.jl")
@@ -32,6 +33,8 @@ include("layouts.jl")
 include("recipe.jl")
 # Opt-in dragging, pinning and re-layout.
 include("interaction.jl")
+# Warm the plotting path at build time rather than on first use.
+include("precompile.jl")
 
 export powerplot, powerplot!, Field
 export interactive!, relayout!, LayoutState
