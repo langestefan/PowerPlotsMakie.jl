@@ -39,7 +39,7 @@ jobs:
           Pkg.add(PackageSpec(name = "JuliaFormatter", version = v"2.12.4"))
         shell: julia --color=yes {0}
       - name: Run prek
-        uses: j178/prek-action@v3.0.0
+        uses: j178/prek-action@v3.0.1
         env:
           SKIP: no-commit-to-branch
 
