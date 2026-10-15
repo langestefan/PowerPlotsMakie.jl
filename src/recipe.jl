@@ -65,6 +65,21 @@ sized by how much of it there is. `flow = Field(:qf)` follows a different field.
 [`flow_arrows`](@ref) for the geometry, and `flow_color`, `flow_marker` and `flow_size` for
 the styling.
 
+# Routes
+
+A branch whose data carries a route — [`edge_coordinates`](@ref), which for PowerModels is
+a `coordinates` list of `[x, y]` pairs on the branch — is drawn along it instead of as a
+straight line, from its from-bus through the route's points to its to-bus. `routes = :auto`
+does this only when every bus has coordinates of its own, since a route means nothing on a
+computed layout; `true` and `false` force it either way. Parallel circuits with routes are
+not fanned apart: two circuits sharing a corridor are drawn on top of each other, as they
+run. `route_radius` rounds the corners, in data units; `0` draws straight segments and
+`nothing` a smooth spline through the points.
+
+Changing `routes` or `route_radius` on a plot that already exists takes effect at the next
+change of the node positions: GraphMakie redraws its edges when the positions or curves
+change, but not when only `waypoints` or `waypoint_radius` does.
+
 `component_defaults` takes the same shape and sits underneath `components`, which is where
 a theme puts its per-component styling — see [`academic_theme`](@ref). Setting `components`
 overrides it component by component rather than wholesale.
@@ -79,6 +94,8 @@ settings are lost in the process.
         layout = :auto,
         pin = nothing,
         parallel_spread = 0.2,
+        routes = :auto,
+        route_radius = 0.0,
         components = Dict{Symbol,Any}(),
         component_defaults = Dict{Symbol,Any}(),
 
@@ -275,6 +292,21 @@ function Makie.plot!(p::PowerPlot)
         return parallel_offsets(_as_network(net).graph; spread = spread)
     end
 
+    # Routes are looked up once per network; laying them between the buses follows the
+    # positions, so a dragged bus keeps its lines attached.
+    map!(p.attributes, [:network, :routes], :edge_routes) do net, routes
+        network = _as_network(net)
+        return _use_routes(routes, network) ? edge_routes(network) :
+               Dict{Int,Vector{Point2f}}()
+    end
+    map!(
+        p.attributes,
+        [:network, :edge_routes, :node_pos],
+        :edge_waypoints,
+    ) do net, routes, pos
+        return route_waypoints(_as_network(net), routes, pos)
+    end
+
     node_inputs = [
         :network,
         :components,
@@ -419,6 +451,9 @@ function Makie.plot!(p::PowerPlot)
         # `automatic` bows only antiparallel edges of a *directed* graph, which would leave
         # parallel circuits drawn exactly on top of each other.
         curve_distance_usage = true,
+        # A route overrules the curve: GraphMakie draws an edge with waypoints through them.
+        waypoints = p.edge_waypoints,
+        waypoint_radius = p.route_radius,
         p.graphplot_attr[]...,
     )
 
@@ -426,11 +461,19 @@ function Makie.plot!(p::PowerPlot)
     # `flow` asks for it, so a plot of a case with no solution pays nothing.
     map!(
         p.attributes,
-        [:network, :node_pos, :curve_distances, :flow, :flow_size, :autoscale_factor],
+        [
+            :network,
+            :node_pos,
+            :curve_distances,
+            :edge_waypoints,
+            :flow,
+            :flow_size,
+            :autoscale_factor,
+        ],
         :flow_arrows,
-    ) do net, pos, curves, flow, sizerange, scale
+    ) do net, pos, curves, waypoints, flow, sizerange, scale
         scaled = (first(sizerange) * scale, last(sizerange) * scale)
-        return flow_arrows(_as_network(net), pos, curves, flow, scaled)
+        return flow_arrows(_as_network(net), pos, curves, flow, scaled; waypoints)
     end
     map!(a -> a.positions, p.attributes, :flow_arrows, :flow_pos)
     map!(a -> a.rotations, p.attributes, :flow_arrows, :flow_rotation)

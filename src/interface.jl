@@ -117,6 +117,21 @@ default returns `nothing` for every node, i.e. positions come purely from the la
 node_coordinates(::Any, ::Symbol, ::AbstractString) = nothing
 
 """
+    edge_coordinates(data, comp::Symbol, id::AbstractString)
+        -> Union{Nothing,Vector{<:Point2}}
+
+The route an edge component follows between its two nodes, as a polyline in the same
+coordinate system as [`node_coordinates`](@ref), or `nothing` when it has none.
+
+This is what lets a geographic network be drawn along its real line and cable routes rather
+than as straight chords between substations. The route may run in either direction and need
+not end exactly on the node coordinates: the recipe orients it from the from-node to the
+to-node and draws it from bus to bus through the route's points (see the `routes` attribute
+of [`powerplot`](@ref)). The default returns `nothing` for every edge.
+"""
+edge_coordinates(::Any, ::Symbol, ::AbstractString) = nothing
+
+"""
     supports(data) -> Bool
 
 Whether a backend is loaded for `data`. Used only to produce a helpful error message.

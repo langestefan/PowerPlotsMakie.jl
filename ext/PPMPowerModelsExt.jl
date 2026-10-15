@@ -91,4 +91,17 @@ function PPM.node_coordinates(data::NETWORK, comp::Symbol, id::AbstractString)
     return PPM.Point2f(x, y)
 end
 
+"""
+Routes come from a `coordinates` field on the edge: a list of `[x, y]` pairs, the shape of a
+GeoJSON LineString's `coordinates`, so a route survives a round trip through PowerModels'
+JSON. Fewer than two points is no route.
+"""
+function PPM.edge_coordinates(data::NETWORK, comp::Symbol, id::AbstractString)
+    entry = get(_table(data, comp), String(id), nothing)
+    entry === nothing && return nothing
+    coords = get(entry, "coordinates", nothing)
+    (coords isa AbstractVector && length(coords) >= 2) || return nothing
+    return [PPM.Point2f(c[1], c[2]) for c in coords]
+end
+
 end # module

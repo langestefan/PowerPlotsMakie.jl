@@ -47,6 +47,8 @@ include("scale.jl")
 include("radial.jl")
 # Vertex positioning, pinning and pre-existing coordinates.
 include("layouts.jl")
+# Edge routes from the data, laid between the drawn node positions.
+include("routes.jl")
 # Power-flow arrow geometry.
 include("flow.jl")
 # The Makie recipe itself.
@@ -72,12 +74,13 @@ export PowerNetwork, powernetwork
 export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge
 export RadialTree, isradial, radial_tree, layout_positions
+export edge_routes, route_waypoints
 export vertex_column, edge_column, vertex_components, edge_components
 export vertex_indices, edge_indices, present_components
 
 # Backend interface, exported so downstream packages can add methods without reaching into
 # internals.
 export component_types, component_ids, component_field
-export edge_endpoints, injection_bus, reference_nodes, node_coordinates
+export edge_endpoints, injection_bus, reference_nodes, node_coordinates, edge_coordinates
 
 end
