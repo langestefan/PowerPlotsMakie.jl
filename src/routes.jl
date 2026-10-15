@@ -64,19 +64,39 @@ end
 
 _distance(a, b) = hypot((b - a)...)
 
-function _waypoints(route::AbstractVector{Point2f}, p1::Point2f, p2::Point2f)
+_waypoints(route::AbstractVector{Point2f}, p1::Point2f, p2::Point2f) =
+    first(_route_path(route, p1, p2, nothing))
+
+"""
+    _route_path(route, p1, p2, values) -> (waypoints, segment_values)
+
+The waypoints an edge from `p1` to `p2` is drawn through along `route`, and — when `values`
+holds one value per segment of the route — the value of each segment of the drawn path
+`[p1; waypoints; p2]`, which has one more segment than there are waypoints.
+
+The hop from a node onto the route takes the value of the segment it joins, and a segment
+lost to a dropped point takes its value with it.
+"""
+function _route_path(route::AbstractVector{Point2f}, p1::Point2f, p2::Point2f, values)
     a, b = first(route), last(route)
     flipped = _distance(a, p2) + _distance(b, p1) < _distance(a, p1) + _distance(b, p2)
+    points = flipped ? reverse(route) : route
+    vals = values === nothing ? nothing : (flipped ? reverse(values) : values)
     out = Point2f[]
-    for p in (flipped ? Iterators.reverse(route) : route)
+    segs = Any[]
+    for (i, p) in enumerate(points)
         # GraphMakie drops a first or last waypoint equal to the node by mutating the vector
         # it is given, and a repeated point leaves a rounded corner (`route_radius > 0`) no
         # direction to turn in, so neither is passed on.
         (p == p1 || p == p2) && continue
         (!isempty(out) && last(out) == p) && continue
         push!(out, p)
+        # The segment arriving here: the route's segment into point `i`, or for the first
+        # point the hop from the node, which takes the first segment's value.
+        vals === nothing || push!(segs, vals[max(i - 1, 1)])
     end
-    return out
+    vals === nothing || push!(segs, last(vals))
+    return out, segs
 end
 
 """

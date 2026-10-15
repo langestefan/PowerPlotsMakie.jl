@@ -82,6 +82,25 @@ Changing `routes` or `route_radius` on a plot that already exists takes effect a
 change of the node positions: GraphMakie redraws its edges when the positions or curves
 change, but not when only `waypoints` or `waypoint_radius` does.
 
+# Line styles
+
+A line style, like a colour, can come from the data: `linestyle = Field(:name)` in
+`components` (or as `edge_linestyle`), with `linestyles` (or `edge_linestyles`) saying which
+value is drawn how — `Dict("cable" => :dash)`, a vector handed out over the values, or by
+default `true` dashed for a `Bool` field. Where the field holds one value per segment of the
+branch's route — a line that goes underground for part of its way — the route is drawn
+stretch by stretch, each in its own style:
+
+```julia
+powerplot(case;
+    components = Dict(:branch => (linestyle = Field(:route_kind),
+                                  linestyles = Dict("cable" => :dash))))
+```
+
+These stretches are drawn as straight segments whatever `route_radius` says. See
+[`resolve_linestyles`](@ref) and [`route_segments`](@ref); [`powerlegend!`](@ref) adds a
+section that says what each style means.
+
 # Groups
 
 `group = Field(:base_kv)` sorts the network into groups by a node field — voltage level,
@@ -162,6 +181,7 @@ settings are lost in the process.
         edge_color = nothing,
         edge_width = 2.0,
         edge_linestyle = :solid,
+        edge_linestyles = nothing,
         edge_colormap = nothing,
         edge_colorrange = nothing,
         edge_colormode = :auto,
@@ -216,6 +236,10 @@ struct StyleBundle
     strokecolors::Vector{RGBAf}
     linestyles::Vector{Any}
     results::Dict{Symbol,ColorResult}
+    # Edges styled per route segment, by edge index, and how each component's line style was
+    # resolved from a field; both empty unless a `linestyle` is a `Field`.
+    segment_linestyles::Dict{Int,Vector{Any}}
+    linestyle_results::Dict{Symbol,LinestyleResult}
 end
 
 """
@@ -277,6 +301,8 @@ function _style(
     strokecolors = Vector{RGBAf}(undef, n)
     linestyles = Vector{Any}(undef, n)
     results = Dict{Symbol,ColorResult}()
+    segments = Dict{Int,Vector{Any}}()
+    lsresults = Dict{Symbol,LinestyleResult}()
 
     for comp in unique(r.component for r in refs)
         idx = findall(r -> r.component === comp, refs)
@@ -320,11 +346,34 @@ function _style(
         )
 
         markers[idx] .= Ref(get(spec, :marker, :circle))
-        linestyles[idx] .= Ref(get(spec, :linestyle, :solid))
+        lsreq = get(spec, :linestyle, :solid)
+        if lsreq isa Field
+            ls = resolve_linestyles(
+                _values(net, kind, lsreq.name, idx),
+                lsreq.name,
+                get(spec, :linestyles, nothing),
+            )
+            linestyles[idx] = ls.styles
+            for (k, i) in enumerate(idx)
+                ls.segments[k] === nothing || (segments[i] = ls.segments[k])
+            end
+            comp === CONNECTOR || (lsresults[comp] = ls.result)
+        else
+            linestyles[idx] .= Ref(lsreq)
+        end
         strokecolors[idx] .= Ref(RGBAf(to_color(get(spec, :strokecolor, :black))))
     end
 
-    return StyleBundle(colors, sizes, markers, strokecolors, linestyles, results)
+    return StyleBundle(
+        colors,
+        sizes,
+        markers,
+        strokecolors,
+        linestyles,
+        results,
+        segments,
+        lsresults,
+    )
 end
 
 """
@@ -505,6 +554,7 @@ function Makie.plot!(p::PowerPlot)
         :edge_color,
         :edge_width,
         :edge_linestyle,
+        :edge_linestyles,
         :edge_colormap,
         :edge_colorrange,
         :edge_colormode,
@@ -524,6 +574,7 @@ function Makie.plot!(p::PowerPlot)
     color,
     width,
     linestyle,
+    linestyles,
     colormap,
     colorrange,
     colormode,
@@ -537,6 +588,7 @@ function Makie.plot!(p::PowerPlot)
             color,
             width,
             linestyle,
+            linestyles,
             colormap,
             colorrange,
             colormode,
@@ -575,13 +627,44 @@ function Makie.plot!(p::PowerPlot)
     map!(p.attributes, [:edge_style, :edge_hidden], :gp_edge_color) do style, hidden
         return _hide(style.colors, hidden)
     end
-    map!(x -> _collapse(x.linestyles), p.attributes, :edge_style, :gp_edge_linestyle)
+    # Edges styled per route segment are drawn by the route layers below, stretch by
+    # stretch, and GraphMakie draws them at zero width. Their GraphMakie style is set to that
+    # of the other edges, so that a uniform style can still be collapsed to one and does not
+    # split GraphMakie's edges into one plot each.
+    map!(segment_styled_edges, p.attributes, [:edge_style, :edge_routes], :segment_edges)
+    map!(p.attributes, [:edge_style, :segment_edges], :gp_edge_linestyle) do style, mask
+        styles = style.linestyles
+        any(mask) || return _collapse(styles)
+        k = findfirst(!, mask)
+        filler = k === nothing ? :solid : styles[k]
+        return _collapse(Any[mask[j] ? filler : styles[j] for j in eachindex(styles)])
+    end
 
     # Design units become pixels here, and nowhere else. Scaling at the very last step keeps
     # the style resolution — which is the expensive part — independent of the layout, so a
     # drag re-scales the sizes without re-resolving every component's colour.
     map!(_scaled_sizes, p.attributes, [:node_style, :autoscale_factor], :gp_node_size)
     map!(_scaled_sizes, p.attributes, [:edge_style, :autoscale_factor], :gp_edge_width)
+    map!(p.attributes, [:gp_edge_width, :segment_edges], :gp_graph_edge_width) do w, mask
+        return any(mask) ? ifelse.(mask, 0.0, w) : w
+    end
+    map!(
+        p.attributes,
+        [
+            :network,
+            :edge_style,
+            :edge_routes,
+            :segment_edges,
+            :node_pos,
+            :gp_edge_color,
+            :gp_edge_width,
+        ],
+        :route_layers,
+    ) do net, style, routes, mask, pos, colors, widths
+        return route_segments(_as_network(net), style, routes, mask, pos, colors, widths)
+    end
+    # Drawn before the graph, so that the nodes sit on top of the lines running into them.
+    _draw_route_layers!(p)
     map!(*, p.attributes, [:node_strokewidth, :autoscale_factor], :gp_node_strokewidth)
 
     graph = _as_network(p.network[]).graph
@@ -596,7 +679,7 @@ function Makie.plot!(p::PowerPlot)
         # than being resolved per component.
         node_strokewidth = p.gp_node_strokewidth,
         edge_color = p.gp_edge_color,
-        edge_width = p.gp_edge_width,
+        edge_width = p.gp_graph_edge_width,
         edge_linestyle = p.gp_edge_linestyle,
         curve_distance = p.curve_distances,
         # `automatic` bows only antiparallel edges of a *directed* graph, which would leave
@@ -734,6 +817,55 @@ function _set_visible!(plot, v)
     haskey(plot.attributes.inputs, :visible) && plot.visible[] != v && (plot.visible = v)
     foreach(c -> _set_visible!(c, v), plot.plots)
     return
+end
+
+"The route layers' `lines` of each plot, by line style; see [`_draw_route_layers!`](@ref)."
+const ROUTE_LAYER_PLOTS = WeakKeyDict{PowerPlot,Dict{Any,Any}}()
+
+"""
+    _draw_route_layers!(p)
+
+One `lines` per line style in `p.route_layers`, kept up to date as the layers change.
+
+A plot is made the first time a style appears, and emptied when it is no longer used: the
+set of styles follows the data and the `linestyles` mapping, which can change after the
+plot is made. Hovering a point of one finds its branch through [`component_at`](@ref).
+"""
+function _draw_route_layers!(p::PowerPlot)
+    plots = Dict{Any,Any}()
+    ROUTE_LAYER_PLOTS[p] = plots
+    label = (picked, i, _) -> hover_text(p, component_at(p, picked, i))
+    function draw(layers)
+        for (style, layer) in layers
+            q = get(plots, style, nothing)
+            if q === nothing
+                plots[style] = Makie.lines!(
+                    p,
+                    layer.points;
+                    color = layer.colors,
+                    linewidth = layer.widths,
+                    linestyle = style,
+                    visible = p.visible,
+                    inspector_label = label,
+                )
+            else
+                Makie.update!(
+                    q,
+                    layer.points;
+                    color = layer.colors,
+                    linewidth = layer.widths,
+                )
+            end
+        end
+        for (style, q) in plots
+            haskey(layers, style) ||
+                Makie.update!(q, Point2f[]; color = RGBAf[], linewidth = Float32[])
+        end
+        return
+    end
+    draw(p.route_layers[])
+    on(draw, p, Makie.ComputePipeline.get_observable!(p.route_layers))
+    return p
 end
 
 """

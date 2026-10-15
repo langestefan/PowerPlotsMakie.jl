@@ -54,6 +54,8 @@ include("groups.jl")
 # Power-flow arrow geometry.
 include("flow.jl")
 # The Makie recipe itself.
+include("linestyles.jl")
+
 include("recipe.jl")
 # Which component is under the mouse, and the hover tooltip.
 include("hover.jl")
@@ -79,6 +81,7 @@ export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge
 export RadialTree, isradial, radial_tree, layout_positions
 export edge_routes, route_waypoints
+export LinestyleResult, resolve_linestyles, RouteLayer, route_segments, segment_styled_edges
 export NetworkGroups, network_groups, group_label, group_counts, hidden_masks
 export component_at, hover_text
 export vertex_column, edge_column, vertex_components, edge_components

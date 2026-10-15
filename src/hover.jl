@@ -26,7 +26,8 @@ function component_at(p::PowerPlot, picked, index)
         p.vertex_hidden[][index] && return nothing
         return net.vertices[index]
     end
-    j = _edge_at(GraphMakie.get_edge_plot(gp), picked, index)
+    j = _route_layer_edge(p, picked, index)
+    j === nothing && (j = _edge_at(GraphMakie.get_edge_plot(gp), picked, index))
     (j === nothing || !(1 <= j <= ne(net))) && return nothing
     p.edge_hidden[][j] && return nothing
     return net.edges[j]
@@ -47,6 +48,22 @@ function _edge_at(edgeplot, picked, index)
     k === nothing && return nothing
     edgeplot.split_edgeplots[] && return k
     return findfirst(r -> index in r, edgeplot.ranges[])
+end
+
+"""
+The edge a point of one of the route layers belongs to (see [`route_segments`](@ref)): the
+layers are the plot's own `lines`, one per line style.
+"""
+function _route_layer_edge(p::PowerPlot, picked, index)
+    # Makie converts a plot's `linestyle` into a dash pattern, so the style a layer stands
+    # for is looked up by the plot rather than read back from it.
+    plots = get(ROUTE_LAYER_PLOTS, p, nothing)
+    plots === nothing && return nothing
+    k = findfirst(q -> q === picked, plots)
+    k === nothing && return nothing
+    layer = get(p.route_layers[], k, nothing)
+    (layer === nothing || !(1 <= index <= length(layer.edges))) && return nothing
+    return layer.edges[index]
 end
 
 """

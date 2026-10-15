@@ -16,6 +16,7 @@ struct LegendEntry
     size::Float64           # markersize for nodes, linewidth for edges
     strokecolor::RGBAf      # nodes only
     strokewidth::Float64    # nodes only
+    linestyles::Union{Nothing,LinestyleResult}  # edges styled by a field only
 end
 
 """
@@ -72,6 +73,7 @@ function _push_boundary_entry!(out, p, net, wanted, strokewidth)
             p.gp_node_size[][i],
             style.strokecolors[i],
             strokewidth,
+            nothing,
         ),
     )
     return out
@@ -91,8 +93,10 @@ function _push_entry!(
 )
     wanted === nothing || comp in wanted || return out
     result = get(bundle.results, comp, nothing)
-    # `:explicit` colours came in as a per-index vector: there is nothing to label.
-    (result === nothing || result.kind === :explicit) && return out
+    # `:explicit` colours came in as a per-index vector: there is nothing to label — unless
+    # the line style is drawn from a field, which still has a key of its own.
+    result === nothing && return out
+    result.kind === :explicit && !haskey(bundle.linestyle_results, comp) && return out
     idx = role === :node ? vertex_indices(net, comp) : edge_indices(net, comp)
     isempty(idx) && return out
     i = first(idx)
@@ -107,6 +111,7 @@ function _push_entry!(
             bundle.sizes[i] * scale,
             bundle.strokecolors[i],
             strokewidth,
+            get(bundle.linestyle_results, comp, nothing),
         ),
     )
     return out
@@ -146,16 +151,23 @@ end
 const COMPONENT_GROUP_TITLE = "component"
 
 """
-    legend_groups(entries) -> (elements, labels, titles)
+    legend_groups(entries; linestyle_title = nothing, linestyle_labels = string)
+        -> (elements, labels, titles)
 
 Arrange entries into the grouped form `Legend` takes.
 
 Components drawn in one flat colour share a single group — that group *is* the key to what
 each colour means, and is the whole legend of a default plot. Every categorically coloured
 component then gets its own group, titled with the field driving it, so that two components
-coloured by different fields cannot be mistaken for one scale.
+coloured by different fields cannot be mistaken for one scale. A component whose line style
+is drawn from a field gets a group of line swatches, one per value, titled with that field
+or `linestyle_title` and labelled `linestyle_labels(value)`.
 """
-function legend_groups(entries::Vector{LegendEntry})
+function legend_groups(
+    entries::Vector{LegendEntry};
+    linestyle_title = nothing,
+    linestyle_labels = string,
+)
     elements = Vector{Vector{Any}}()
     labels = Vector{Vector{String}}()
     titles = String[]
@@ -172,6 +184,25 @@ function legend_groups(entries::Vector{LegendEntry})
             push!(titles, "$(e.component) ($(r.field))")
         end
     end
+    for e in entries
+        ls = e.linestyles
+        (ls === nothing || isempty(ls.values)) && continue
+        # In the component's colour when it has just the one, else in a neutral grey that
+        # stands for all of them.
+        color = e.result.kind === :constant ? first(e.result.swatches) : LINESTYLE_SWATCH
+        push!(
+            elements,
+            Any[
+                LineElement(; color, linestyle = st, linewidth = e.size) for st in ls.styles
+            ],
+        )
+        push!(labels, String[string(linestyle_labels(v)) for v in ls.values])
+        push!(
+            titles,
+            linestyle_title === nothing ? "$(e.component) ($(ls.field))" :
+            string(linestyle_title),
+        )
+    end
 
     if !isempty(flat_el)
         pushfirst!(elements, flat_el)
@@ -180,6 +211,9 @@ function legend_groups(entries::Vector{LegendEntry})
     end
     return elements, labels, titles
 end
+
+"Colour of the line-style swatches of a component drawn in more than one colour."
+const LINESTYLE_SWATCH = RGBAf(0.35, 0.35, 0.35, 1)
 
 """
     powercolorbar!(pos, plot, component; kwargs...) -> Colorbar
@@ -229,7 +263,8 @@ powercolorbar!(pos, p::Makie.FigureAxisPlot, component::Symbol; kwargs...) =
 
 """
     powerlegend!(pos, plot; components = nothing, colorbar = (;),
-                 group_title = nothing, group_labels = (v, n) -> group_label(v), kwargs...)
+                 group_title = nothing, group_labels = (v, n) -> group_label(v),
+                 linestyle_title = nothing, linestyle_labels = string, kwargs...)
 
 Build the complete key for `plot` at `pos`: one `Legend` describing every component drawn
 in a flat or categorical colour, and a `Colorbar` under it for each component drawn with a
@@ -259,6 +294,10 @@ step whichever is changed. Right-click the legend to flip every group. `group_ti
 replaces the section's title (by default the field's name), and `group_labels(value,
 counts)` its labels, where `counts` is `(; nodes, edges)` for that group, e.g.
 `group_labels = (v, n) -> "\$(group_label(v)) kV (\$(n.nodes) buses)"`.
+
+A component whose line style comes from a field (`linestyle = Field(...)`) gets a section of
+line swatches, one per value; `linestyle_title` and `linestyle_labels(value)` replace its
+title and labels — see [`legend_groups`](@ref).
 """
 function powerlegend!(
     pos,
@@ -267,11 +306,13 @@ function powerlegend!(
     colorbar = (;),
     group_title = nothing,
     group_labels = (v, _) -> group_label(v),
+    linestyle_title = nothing,
+    linestyle_labels = string,
     kwargs...,
 )
     entries = legend_entries(p; components = components)
     grid = GridLayout(pos)
-    elements, labels, titles = legend_groups(entries)
+    elements, labels, titles = legend_groups(entries; linestyle_title, linestyle_labels)
     section = _group_section(p, group_title, group_labels)
     if section !== nothing
         pushfirst!(elements, section.elements)
