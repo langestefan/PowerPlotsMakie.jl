@@ -49,10 +49,14 @@ include("radial.jl")
 include("layouts.jl")
 # Edge routes from the data, laid between the drawn node positions.
 include("routes.jl")
+# Grouping vertices and edges by a node field, for colouring and hiding.
+include("groups.jl")
 # Power-flow arrow geometry.
 include("flow.jl")
 # The Makie recipe itself.
 include("recipe.jl")
+# Which component is under the mouse, and the hover tooltip.
+include("hover.jl")
 # Legends and colorbars, which Makie builds for no plot automatically.
 include("legend.jl")
 # The academic preset.
@@ -75,12 +79,15 @@ export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge
 export RadialTree, isradial, radial_tree, layout_positions
 export edge_routes, route_waypoints
+export NetworkGroups, network_groups, group_label, group_counts, hidden_masks
+export component_at, hover_text
 export vertex_column, edge_column, vertex_components, edge_components
 export vertex_indices, edge_indices, present_components
 
 # Backend interface, exported so downstream packages can add methods without reaching into
 # internals.
 export component_types, component_ids, component_field
-export edge_endpoints, injection_bus, reference_nodes, node_coordinates, edge_coordinates
+export edge_endpoints, injection_bus, reference_nodes, boundary_nodes
+export node_coordinates, edge_coordinates
 
 end

@@ -54,7 +54,9 @@ it, so the plot does not change weight under the interaction keys. The factor is
 when the network changes, when the figure is resized, and when `autoscale` is set.
 
 `autoscale = false` turns it off and leaves every size in raw pixels; a number, such as
-`autoscale = 1.4`, scales the whole plot by hand. See [`autoscale_factor`](@ref) for how
+`autoscale = 1.4`, scales the whole plot by hand. `autoscale_min` is the smallest node
+diameter, in pixels, the automatic factor will go down to: on a dense geographic network
+the measured spacing alone would leave markers too small to tell apart. See [`autoscale_factor`](@ref) for how
 the automatic factor is arrived at.
 
 # Flow arrows
@@ -80,6 +82,34 @@ Changing `routes` or `route_radius` on a plot that already exists takes effect a
 change of the node positions: GraphMakie redraws its edges when the positions or curves
 change, but not when only `waypoints` or `waypoint_radius` does.
 
+# Groups
+
+`group = Field(:base_kv)` sorts the network into groups by a node field — voltage level,
+zone, owner — and colours every bus, branch and injection by its group, so one plot shows a
+multi-level network the way a map does. Branches and injections inherit the group of the
+buses they hang off; a transformer between two groups belongs to neither and keeps its
+component colour. `group_palette` sets the colours: a `Dict` from value to colour such as
+`Dict(380 => :firebrick, 150 => :steelblue)`, a vector, or a colormap name. A component given
+a colour of its own in `components` or a role-level attribute is not recoloured.
+
+`hidden_groups` lists groups not to draw; edges into a hidden group are hidden with it.
+[`powerlegend!`](@ref) gives each group an entry that toggles it on click. See
+[`network_groups`](@ref) for the rules.
+
+# Boundary nodes
+
+Buses a backend reports through [`boundary_nodes`](@ref) — where the modelled network meets
+the equivalent of the grid around it — are drawn with `boundary_marker`, `boundary_color`
+and `boundary_scale` times their size, and get their own legend entry. `boundary = false`
+draws them like any other bus.
+
+# Hover
+
+With Makie's `DataInspector` attached (`DataInspector(fig)`), hovering a bus or branch shows
+which component it is, followed by the fields named in `hover_fields`, e.g.
+`hover_fields = [:name, :base_kv, :vm]`. [`component_at`](@ref) answers the same question
+for hand-rolled readouts.
+
 `component_defaults` takes the same shape and sits underneath `components`, which is where
 a theme puts its per-component styling — see [`academic_theme`](@ref). Setting `components`
 overrides it component by component rather than wholesale.
@@ -99,8 +129,23 @@ settings are lost in the process.
         components = Dict{Symbol,Any}(),
         component_defaults = Dict{Symbol,Any}(),
 
+        # --- groups --------------------------------------------------------------------
+        group = nothing,
+        group_palette = nothing,
+        hidden_groups = Any[],
+
+        # --- boundary nodes ------------------------------------------------------------
+        boundary = true,
+        boundary_marker = :diamond,
+        boundary_color = :black,
+        boundary_scale = 1.2,
+
+        # --- hover ---------------------------------------------------------------------
+        hover_fields = Symbol[],
+
         # --- sizing --------------------------------------------------------------------
         autoscale = :auto,
+        autoscale_min = MIN_NODE_PIXELS,
 
         # --- nodes ---------------------------------------------------------------------
         node_color = nothing,
@@ -196,7 +241,7 @@ function _values(net, kind::Symbol, field, idx)
 end
 
 """
-    _style(net, kind, defaults, presets, components, schemes) -> StyleBundle
+    _style(net, kind, defaults, presets, components, schemes; groups) -> StyleBundle
 
 Resolve every styling attribute for one side of the graph into per-index vectors.
 
@@ -208,8 +253,21 @@ Three layers, each overriding the one before: the role-level attributes, then `p
 (the `component_defaults` a theme supplies), then the caller's own `components`. The middle
 layer exists so that a theme can say what a generator looks like without a caller who
 restyles the buses silently discarding it.
+
+A component given no colour at any layer is coloured by its group when the plot is grouped
+(see [`network_groups`](@ref)), and its [`ColorResult`](@ref) becomes `:group`: the group
+key in the legend then describes it, and the component key leaves it out. Members of the
+component that belong to no group keep the component's own colour.
 """
-function _style(net::PowerNetwork, kind::Symbol, defaults, presets, components, schemes)
+function _style(
+    net::PowerNetwork,
+    kind::Symbol,
+    defaults,
+    presets,
+    components,
+    schemes;
+    groups::NetworkGroups = NetworkGroups(net),
+)
     refs = kind === :node ? net.vertices : net.edges
     n = length(refs)
 
@@ -232,6 +290,24 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, presets, components, 
             get(schemes, comp, :grays),
         )
         colors[idx] = result.colors
+        if groups.field !== nothing && get(spec, :color, nothing) === nothing
+            keys_ = kind === :node ? groups.vertex : groups.edge
+            grouped = filter(i -> !ismissing(keys_[i]), idx)
+            for i in grouped
+                colors[i] = groups.colors[keys_[i]]
+            end
+            if length(grouped) == length(idx)
+                result = ColorResult(
+                    colors[idx],
+                    :group,
+                    groups.field,
+                    [],
+                    RGBAf[],
+                    result.colormap,
+                    (0.0, 1.0),
+                )
+            end
+        end
         comp === CONNECTOR || (results[comp] = result)
 
         sizekey = kind === :node ? :size : :width
@@ -249,6 +325,43 @@ function _style(net::PowerNetwork, kind::Symbol, defaults, presets, components, 
     end
 
     return StyleBundle(colors, sizes, markers, strokecolors, linestyles, results)
+end
+
+"""
+    _mark_boundary!(bundle, indices, color, marker, scale) -> bundle
+
+Restyle the boundary vertices: their own marker and colour, and `scale` times their size,
+so that the edge of the model stands out from the buses inside it whatever those are
+coloured by.
+"""
+function _mark_boundary!(bundle::StyleBundle, indices, color, marker, scale)
+    c = RGBAf(to_color(color))
+    for i in indices
+        bundle.colors[i] = c
+        bundle.markers[i] = marker
+        bundle.sizes[i] *= scale
+    end
+    return bundle
+end
+
+"Vertex indices of the boundary nodes of `net`; see [`boundary_nodes`](@ref)."
+function boundary_indices(net::PowerNetwork)
+    ids = Set(string.(boundary_nodes(net.data)))
+    isempty(ids) && return Int[]
+    return [
+        i for
+        (i, r) in enumerate(net.vertices) if net.vertex_roles[i] isa NodeRole && r.id in ids
+    ]
+end
+
+"`colors` with the alpha of every index in `mask` set to zero."
+function _hide(colors::AbstractVector{RGBAf}, mask::AbstractVector{Bool})
+    any(mask) || return colors
+    out = copy(colors)
+    for i in eachindex(out)
+        mask[i] && (out[i] = RGBAf(out[i].r, out[i].g, out[i].b, 0))
+    end
+    return out
 end
 
 "The drawing area in pixels, or a zero size when the plot has no scene to ask."
@@ -282,11 +395,22 @@ function Makie.plot!(p::PowerPlot)
     # when the network, the viewport or `autoscale` itself changes.
     map!(
         p.attributes,
-        [:autoscale, :network, :viewport_size],
+        [:autoscale, :autoscale_min, :network, :viewport_size],
         :autoscale_factor,
-    ) do request, _, viewport
-        return resolve_autoscale(request, p.node_pos[], viewport)
+    ) do request, min_pixels, _, viewport
+        return resolve_autoscale(request, p.node_pos[], viewport; min_pixels)
     end
+
+    # Groups, and what hiding some of them hides.
+    map!(p.attributes, [:network, :group, :group_palette], :groups) do net, group, palette
+        return network_groups(_as_network(net), group; palette)
+    end
+    map!(
+        hidden_masks,
+        p.attributes,
+        [:groups, :hidden_groups],
+        [:vertex_hidden, :edge_hidden],
+    )
 
     map!(p.attributes, [:network, :parallel_spread], :curve_distances) do net, spread
         return parallel_offsets(_as_network(net).graph; spread = spread)
@@ -320,6 +444,11 @@ function Makie.plot!(p::PowerPlot)
         :node_colorrange,
         :node_colormode,
         :node_palette,
+        :groups,
+        :boundary,
+        :boundary_marker,
+        :boundary_color,
+        :boundary_scale,
     ]
     map!(
         p.attributes,
@@ -336,7 +465,12 @@ function Makie.plot!(p::PowerPlot)
     colormap,
     colorrange,
     colormode,
-    palette
+    palette,
+    groups,
+    boundary,
+    bmarker,
+    bcolor,
+    bscale
         network = _as_network(net)
         main = (;
             color,
@@ -350,14 +484,18 @@ function Makie.plot!(p::PowerPlot)
             palette,
             _default_size = 12.0,
         )
-        return _style(
+        bundle = _style(
             network,
             :node,
             (main = main, connector = main),
             presets,
             components,
-            assign_schemes(network),
+            assign_schemes(network);
+            groups,
         )
+        boundary &&
+            _mark_boundary!(bundle, boundary_indices(network), bcolor, bmarker, bscale)
+        return bundle
     end
 
     edge_inputs = [
@@ -374,6 +512,7 @@ function Makie.plot!(p::PowerPlot)
         :connector_color,
         :connector_width,
         :connector_linestyle,
+        :groups,
     ]
     map!(
         p.attributes,
@@ -391,7 +530,8 @@ function Makie.plot!(p::PowerPlot)
     palette,
     ccolor,
     cwidth,
-    clinestyle
+    clinestyle,
+    groups
         network = _as_network(net)
         main = (;
             color,
@@ -415,14 +555,26 @@ function Makie.plot!(p::PowerPlot)
             (main = main, connector = connector),
             presets,
             components,
-            assign_schemes(network),
+            assign_schemes(network);
+            groups,
         )
     end
 
-    map!(x -> x.colors, p.attributes, :node_style, :gp_node_color)
+    # Hidden groups are drawn fully transparent rather than removed, so the vertex and edge
+    # numbering — which everything else indexes by — stays the same while they are hidden.
+    map!(p.attributes, [:node_style, :vertex_hidden], :gp_node_color) do style, hidden
+        return _hide(style.colors, hidden)
+    end
     map!(x -> _collapse(x.markers), p.attributes, :node_style, :gp_node_marker)
-    map!(x -> _collapse(x.strokecolors), p.attributes, :node_style, :gp_node_strokecolor)
-    map!(x -> x.colors, p.attributes, :edge_style, :gp_edge_color)
+    map!(p.attributes, [:node_style, :vertex_hidden], :gp_node_strokecolor) do style, hidden
+        # Always one colour per node, never collapsed to a uniform: the compute graph fixes
+        # an output's type on first use, and hiding a group turns a uniform ring into a
+        # per-node one.
+        return _hide(style.strokecolors, hidden)
+    end
+    map!(p.attributes, [:edge_style, :edge_hidden], :gp_edge_color) do style, hidden
+        return _hide(style.colors, hidden)
+    end
     map!(x -> _collapse(x.linestyles), p.attributes, :edge_style, :gp_edge_linestyle)
 
     # Design units become pixels here, and nowhere else. Scaling at the very last step keeps
@@ -443,7 +595,6 @@ function Makie.plot!(p::PowerPlot)
         # Makie takes scatter stroke width as a uniform, so this stays plot-level rather
         # than being resolved per component.
         node_strokewidth = p.gp_node_strokewidth,
-        node_strokecolor = p.gp_node_strokecolor,
         edge_color = p.gp_edge_color,
         edge_width = p.gp_edge_width,
         edge_linestyle = p.gp_edge_linestyle,
@@ -454,8 +605,12 @@ function Makie.plot!(p::PowerPlot)
         # A route overrules the curve: GraphMakie draws an edge with waypoints through them.
         waypoints = p.edge_waypoints,
         waypoint_radius = p.route_radius,
+        visible = p.visible,
         p.graphplot_attr[]...,
     )
+    _forward_visibility!(p)
+    _link_node_strokecolor!(p)
+    _attach_hover!(p)
 
     # Flow arrows, drawn over the branches they describe. Nothing is computed unless
     # `flow` asks for it, so a plot of a case with no solution pays nothing.
@@ -466,14 +621,15 @@ function Makie.plot!(p::PowerPlot)
             :node_pos,
             :curve_distances,
             :edge_waypoints,
+            :edge_hidden,
             :flow,
             :flow_size,
             :autoscale_factor,
         ],
         :flow_arrows,
-    ) do net, pos, curves, waypoints, flow, sizerange, scale
+    ) do net, pos, curves, waypoints, hidden, flow, sizerange, scale
         scaled = (first(sizerange) * scale, last(sizerange) * scale)
-        return flow_arrows(_as_network(net), pos, curves, flow, scaled; waypoints)
+        return flow_arrows(_as_network(net), pos, curves, flow, scaled; waypoints, hidden)
     end
     map!(a -> a.positions, p.attributes, :flow_arrows, :flow_pos)
     map!(a -> a.rotations, p.attributes, :flow_arrows, :flow_rotation)
@@ -485,6 +641,7 @@ function Makie.plot!(p::PowerPlot)
         markersize = p.flow_markersize,
         marker = p.flow_marker,
         color = p.flow_color,
+        visible = p.visible,
     )
 
     # Selection highlight: a ring drawn over each selected vertex.
@@ -517,6 +674,7 @@ function Makie.plot!(p::PowerPlot)
         color = RGBAf(0, 0, 0, 0),
         strokecolor = p.selection_color,
         strokewidth = p.gp_selection_strokewidth,
+        visible = p.visible,
     )
 
     # Pinned marker: a small dot at the centre of every vertex the layout may not move.
@@ -540,6 +698,7 @@ function Makie.plot!(p::PowerPlot)
         color = p.pinned_color,
         strokecolor = p.pinned_strokecolor,
         strokewidth = p.gp_pinned_strokewidth,
+        visible = p.visible,
     )
     return p
 end
@@ -551,3 +710,48 @@ Selected indices in a stable order, dropping any that are out of range.
 sizes are built in two separate computations and would otherwise not line up.
 """
 _selected_indices(selection, n) = sort!([Int(i) for i in selection if 1 <= i <= n])
+
+"""
+    _forward_visibility!(p)
+
+Make hiding a `powerplot` hide everything it draws.
+
+The recipe hands `visible` to each plot it creates, but GraphMakie does not pass it on to
+the scatter and lines inside its `graphplot`, so a `powerplot` toggled off — by a legend
+entry, say — would keep drawing its network. The setting is copied down by hand to every
+plot under the `graphplot` that holds its own.
+"""
+function _forward_visibility!(p::PowerPlot)
+    gp = graph_plot(p)
+    on(p, Makie.ComputePipeline.get_observable!(p.visible)) do v
+        foreach(c -> _set_visible!(c, v), gp.plots)
+        return
+    end
+    return p
+end
+
+function _set_visible!(plot, v)
+    haskey(plot.attributes.inputs, :visible) && plot.visible[] != v && (plot.visible = v)
+    foreach(c -> _set_visible!(c, v), plot.plots)
+    return
+end
+
+"""
+    _link_node_strokecolor!(p)
+
+Keep the node scatter's stroke colour equal to the resolved `gp_node_strokecolor`.
+
+GraphMakie's `graphplot` has no `node_strokecolor`: a keyword of that name is dropped, and
+its scatter draws Makie's default black ring whatever the plot asked for. So the colour is
+written onto the scatter directly, and again whenever it changes — which it does when a
+group is hidden, since a hidden node's ring has to go with it.
+"""
+function _link_node_strokecolor!(p::PowerPlot)
+    nodes = GraphMakie.get_node_plot(graph_plot(p))
+    nodes.strokecolor = p.gp_node_strokecolor[]
+    on(p, Makie.ComputePipeline.get_observable!(p.gp_node_strokecolor)) do c
+        nodes.strokecolor = c
+        return
+    end
+    return p
+end

@@ -70,7 +70,7 @@ function nearest_neighbor_spacing(positions; sample::Int = SPACING_SAMPLE)
 end
 
 """
-    autoscale_factor(positions, viewport) -> Float64
+    autoscale_factor(positions, viewport; min_pixels = MIN_NODE_PIXELS) -> Float64
 
 How much to multiply every design-unit size by, for a layout of `positions` drawn into a
 viewport of `viewport` pixels.
@@ -87,12 +87,13 @@ instead of growing with it. Neither is the layout: the recipe measures the posit
 does not track them, so dragging a bus or re-running the layout rearranges the network
 without resizing anything in it.
 
-The result is clamped: never below [`MIN_NODE_PIXELS`](@ref), never above
+The result is clamped: never below `min_pixels` ([`MIN_NODE_PIXELS`](@ref) unless the
+plot's `autoscale_min` says otherwise), never above
 [`MAX_NODE_VIEWPORT_FRACTION`](@ref) of the viewport's shorter side. It falls back to `1.0`
 — the unscaled look — whenever there is nothing to measure: a single vertex, a viewport of
 zero size, or a layout that has collapsed to a point.
 """
-function autoscale_factor(positions, viewport)
+function autoscale_factor(positions, viewport; min_pixels::Real = MIN_NODE_PIXELS)
     length(positions) < 2 && return 1.0
     vw, vh = Float64(viewport[1]), Float64(viewport[2])
     (vw > 0 && vh > 0) || return 1.0
@@ -112,9 +113,8 @@ function autoscale_factor(positions, viewport)
     spacing = nearest_neighbor_spacing(positions)
     spacing > 0 || return 1.0
 
-    ceiling = max(MAX_NODE_VIEWPORT_FRACTION * min(vw, vh), MIN_NODE_PIXELS)
-    diameter =
-        clamp(NODE_SPACING_FRACTION * spacing * pixels_per_unit, MIN_NODE_PIXELS, ceiling)
+    ceiling = max(MAX_NODE_VIEWPORT_FRACTION * min(vw, vh), min_pixels)
+    diameter = clamp(NODE_SPACING_FRACTION * spacing * pixels_per_unit, min_pixels, ceiling)
     return diameter / REFERENCE_NODE_SIZE
 end
 
@@ -127,12 +127,12 @@ Turn the `autoscale` attribute into the number every size is multiplied by.
 `nothing` switch scaling off, leaving sizes in raw pixels; a number is used as given, so
 `autoscale = 1.5` is "half again as big as usual" without touching any other attribute.
 """
-resolve_autoscale(request::Bool, positions, viewport) =
-    request ? autoscale_factor(positions, viewport) : 1.0
-resolve_autoscale(request::Real, _, _) = Float64(request)
-resolve_autoscale(::Nothing, _, _) = 1.0
-function resolve_autoscale(request, positions, viewport)
-    request === :auto && return autoscale_factor(positions, viewport)
+resolve_autoscale(request::Bool, positions, viewport; min_pixels = MIN_NODE_PIXELS) =
+    request ? autoscale_factor(positions, viewport; min_pixels) : 1.0
+resolve_autoscale(request::Real, _, _; min_pixels = nothing) = Float64(request)
+resolve_autoscale(::Nothing, _, _; min_pixels = nothing) = 1.0
+function resolve_autoscale(request, positions, viewport; min_pixels = MIN_NODE_PIXELS)
+    request === :auto && return autoscale_factor(positions, viewport; min_pixels)
     request === :off && return 1.0
     throw(
         ArgumentError(

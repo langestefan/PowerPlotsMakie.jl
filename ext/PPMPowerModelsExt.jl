@@ -79,6 +79,15 @@ function PPM.reference_nodes(data::NETWORK)
 end
 
 """
+Boundary buses carry `"boundary" => true`. PowerModels has no field for this, so the flag
+is this package's convention; it rides along in the network dictionary and its JSON
+untouched.
+"""
+function PPM.boundary_nodes(data::NETWORK)
+    return [id for (id, bus) in _table(data, :bus) if get(bus, "boundary", false) === true]
+end
+
+"""
 Honour hand-authored or geographic coordinates stored on the bus, using the same
 `xcoord_1`/`ycoord_1` keys PowerPlots.jl writes and reads.
 """

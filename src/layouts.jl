@@ -24,9 +24,10 @@ Position every vertex of `net`.
 
 `layout` accepts:
 
-  - `:auto` — pick an algorithm for this network: [`RadialTree`](@ref) when the buses and
-    branches form a forest ([`isradial`](@ref)), `Stress` otherwise. Data-supplied
-    coordinates or an explicit `pin` force `Stress`, since it is the choice that can honour
+  - `:auto` — use the data's coordinates when every vertex has them; otherwise pick an
+    algorithm for this network: [`RadialTree`](@ref) when the buses and branches form a
+    forest ([`isradial`](@ref)), `Stress` otherwise. Data-supplied coordinates for some
+    vertices, or an explicit `pin`, force `Stress`, since it is the choice that can honour
     them;
   - `:radial` — a [`RadialTree`](@ref) rooted at the reference buses, whether or not the
     network is a forest;
@@ -54,6 +55,11 @@ function layout_positions(net::PowerNetwork; layout = :auto, pin = nothing)
     end
 
     fixed = fixed_positions(net)
+    # A map, fully placed by the data: there is nothing left for an algorithm to decide, and
+    # running Stress with every vertex pinned would only cost time.
+    if layout === :auto && pin === nothing && length(fixed) == n
+        return Point2f[fixed[i] for i = 1:n]
+    end
     pinned = _pin_dict(pin, fixed, n)
     algorithm = _layout_algorithm(net, layout, fixed, pinned)
     return Point2f[Point2f(p) for p in algorithm(net.graph)]

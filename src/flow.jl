@@ -36,8 +36,8 @@ flow_field(flow) = throw(
 )
 
 """
-    flow_arrows(net, positions, curve_distances, flow, sizerange; waypoints = nothing)
-        -> FlowArrows
+    flow_arrows(net, positions, curve_distances, flow, sizerange;
+                waypoints = nothing, hidden = nothing) -> FlowArrows
 
 Place an arrow at the midpoint of every branch carrying a flow value.
 
@@ -52,7 +52,11 @@ circuits are bowed apart, and an arrow at the chord midpoint would float off its
 circuit and onto its neighbour. For the same reason a branch drawn along a route — given
 as per-edge `waypoints`, see [`route_waypoints`](@ref) — gets its arrow halfway along the
 route. Connectors never carry arrows — they are plumbing, and a generator does not have a
-direction along its stub.
+direction along its stub. Nor do edges flagged in `hidden`, a mask over the edges: a branch
+in a hidden group has no line for its arrow to sit on.
+
+Sizes are scaled over every branch with a value, hidden or not, so hiding a group does not
+resize the arrows left on screen.
 """
 function flow_arrows(
     net::PowerNetwork,
@@ -61,6 +65,7 @@ function flow_arrows(
     flow,
     sizerange;
     waypoints = nothing,
+    hidden = nothing,
 )
     field = flow_field(flow)
     field === nothing && return FlowArrows()
@@ -80,6 +85,7 @@ function flow_arrows(
     for (k, j) in enumerate(idx)
         m = magnitudes[k]
         isfinite(m) || continue
+        hidden === nothing || !hidden[j] || continue
         e = edgelist[j]
         p1, p2 = Point2f(positions[src(e)]), Point2f(positions[dst(e)])
         # A branch whose ends coincide has no direction to point along.

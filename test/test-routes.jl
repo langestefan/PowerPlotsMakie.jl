@@ -69,8 +69,7 @@ end
     @test_throws ArgumentError _use_routes(:yes, powernetwork(case))
 end
 
-@testitem "Only edges with a route get waypoints" tags = [:unit, :fast] setup =
-    [RouteTools] begin
+@testitem "Only edges with a route get waypoints" tags = [:unit, :fast] setup = [RouteTools] begin
     net = powernetwork(routed_case5())
     routes = edge_routes(net)
     j = branch_index(net, "1")

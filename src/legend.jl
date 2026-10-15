@@ -48,6 +48,32 @@ function legend_entries(p::PowerPlot; components = nothing)
     for comp in present_components(net, EdgeRole())
         _push_entry!(out, net, p.edge_style[], comp, :edge, components, stroke, scale)
     end
+    _push_boundary_entry!(out, p, net, components, stroke)
+    return out
+end
+
+"The boundary nodes' entry, listed as component `:boundary` when the plot marks any."
+function _push_boundary_entry!(out, p, net, wanted, strokewidth)
+    p.boundary[] || return out
+    wanted === nothing || :boundary in wanted || return out
+    idx = boundary_indices(net)
+    isempty(idx) && return out
+    i = first(idx)
+    style = p.node_style[]
+    color = style.colors[i]
+    push!(
+        out,
+        LegendEntry(
+            :boundary,
+            :node,
+            _constant_result(color, 0),
+            style.markers[i],
+            nothing,
+            p.gp_node_size[][i],
+            style.strokecolors[i],
+            strokewidth,
+        ),
+    )
     return out
 end
 
@@ -202,7 +228,8 @@ powercolorbar!(pos, p::Makie.FigureAxisPlot, component::Symbol; kwargs...) =
     powercolorbar!(pos, p.plot, component; kwargs...)
 
 """
-    powerlegend!(pos, plot; components = nothing, colorbar = (;), kwargs...)
+    powerlegend!(pos, plot; components = nothing, colorbar = (;),
+                 group_title = nothing, group_labels = (v, n) -> group_label(v), kwargs...)
 
 Build the complete key for `plot` at `pos`: one `Legend` describing every component drawn
 in a flat or categorical colour, and a `Colorbar` under it for each component drawn with a
@@ -224,11 +251,33 @@ powerlegend!(f[1, 2], p)
 `components` restricts the key to the named component types, which is how a single
 component is suppressed; leaving the call out altogether suppresses the lot. `kwargs` go
 to `Legend` and `colorbar` to every `Colorbar`.
+
+A grouped plot (see `group` in [`powerplot`](@ref)) gets a section of its own, first, with
+one entry per group: a line and a marker in the group's colour. Clicking an entry hides
+the group, and clicking again shows it — the entry and the plot's `hidden_groups` stay in
+step whichever is changed. Right-click the legend to flip every group. `group_title`
+replaces the section's title (by default the field's name), and `group_labels(value,
+counts)` its labels, where `counts` is `(; nodes, edges)` for that group, e.g.
+`group_labels = (v, n) -> "\$(group_label(v)) kV (\$(n.nodes) buses)"`.
 """
-function powerlegend!(pos, p::PowerPlot; components = nothing, colorbar = (;), kwargs...)
+function powerlegend!(
+    pos,
+    p::PowerPlot;
+    components = nothing,
+    colorbar = (;),
+    group_title = nothing,
+    group_labels = (v, _) -> group_label(v),
+    kwargs...,
+)
     entries = legend_entries(p; components = components)
     grid = GridLayout(pos)
     elements, labels, titles = legend_groups(entries)
+    section = _group_section(p, group_title, group_labels)
+    if section !== nothing
+        pushfirst!(elements, section.elements)
+        pushfirst!(labels, section.labels)
+        pushfirst!(titles, section.title)
+    end
 
     row = 0
     legend = nothing
@@ -243,7 +292,8 @@ function powerlegend!(pos, p::PowerPlot; components = nothing, colorbar = (;), k
             titles;
             tellheight = true,
             valign = :top,
-            patchsize = _patchsize(entries),
+            patchsize = section === nothing ? _patchsize(entries) :
+                        max.(_patchsize(entries), section.patchsize),
             kwargs...,
         )
     end
@@ -265,3 +315,114 @@ powerlegend!(fig::Makie.Figure, p::PowerPlot; kwargs...) =
     powerlegend!(fig[:, end+1], p; kwargs...)
 powerlegend!(fig::Makie.Figure, p::Makie.FigureAxisPlot; kwargs...) =
     powerlegend!(fig[:, end+1], p.plot; kwargs...)
+
+"""
+    _group_section(plot, title, labels) -> Union{Nothing,NamedTuple}
+
+The legend section for a grouped plot: one line-and-marker swatch per group, each linked to
+a toggle so that clicking it hides the group.
+
+Makie's `Legend` hides and shows *plots*, while a group is a subset of one plot. So every
+group gets a stand-in: an empty, invisible-to-the-eye scatter whose `visible` is the
+group's visibility. The legend toggles the stand-in as it would any plot, and the stand-in
+writes the result into the plot's `hidden_groups`; a change to `hidden_groups` from code is
+written back the other way, so the legend's dimmed entries always match the plot. The
+stand-ins live in the figure's root scene, where an empty plot cannot disturb any axis'
+limits.
+"""
+function _group_section(p::PowerPlot, title, labels)
+    groups = p.groups[]
+    (groups.field === nothing || isempty(groups.values)) && return nothing
+    net = _as_network(p.network[])
+    counts = group_counts(net, groups)
+    scene = Makie.parent_scene(p)
+    root = scene === nothing ? nothing : Makie.root(scene)
+
+    sizes = p.gp_node_size[]
+    widths_ = p.gp_edge_width[]
+    strokes = p.node_style[].strokecolors
+    strokewidth = Float64(Makie.to_value(p.gp_node_strokewidth))
+    hidden = p.hidden_groups[]
+
+    elements = Vector{Any}()
+    proxies = Pair{Any,Any}[]
+    biggest = 0.0
+    for v in groups.values
+        color = groups.colors[v]
+        nodes = findall(
+            i -> net.vertex_roles[i] isa NodeRole && isequal(groups.vertex[i], v),
+            eachindex(groups.vertex),
+        )
+        edges_ = findall(
+            j -> net.edge_roles[j] isa EdgeRole && isequal(groups.edge[j], v),
+            eachindex(groups.edge),
+        )
+        proxy =
+            root === nothing ? nothing :
+            Makie.scatter!(
+                root,
+                Point2f[];
+                visible = !any(h -> isequal(h, v), hidden),
+                inspectable = false,
+            )
+        proxy === nothing || push!(proxies, v => proxy)
+        swatch = Any[]
+        if !isempty(edges_)
+            push!(
+                swatch,
+                LineElement(;
+                    color,
+                    linewidth = widths_[first(edges_)],
+                    plots = proxy === nothing ? Makie.Plot[] : Makie.Plot[proxy],
+                ),
+            )
+        end
+        if !isempty(nodes)
+            i = first(nodes)
+            biggest = max(biggest, sizes[i] + 2 * strokewidth)
+            # Only one element of an entry may name the stand-in: the legend toggles each
+            # plot once per element naming it, and two toggles cancel out.
+            push!(
+                swatch,
+                MarkerElement(;
+                    color,
+                    marker = :circle,
+                    markersize = sizes[i],
+                    strokecolor = strokes[i],
+                    strokewidth,
+                    plots = (isempty(edges_) && proxy !== nothing) ? Makie.Plot[proxy] :
+                            Makie.Plot[],
+                ),
+            )
+        end
+        push!(elements, swatch)
+    end
+    _link_group_toggles!(p, proxies)
+
+    return (
+        title = title === nothing ? string(groups.field) : string(title),
+        elements = elements,
+        labels = String[labels(v, counts[v]) for v in groups.values],
+        patchsize = (Float32(max(20.0, biggest + 4.0)), Float32(max(20.0, biggest + 4.0))),
+    )
+end
+
+function _link_group_toggles!(p::PowerPlot, proxies)
+    isempty(proxies) && return
+    obs(x) = Makie.ComputePipeline.get_observable!(x)
+    for (_, proxy) in proxies
+        on(obs(proxy.visible)) do _
+            hidden = Any[v for (v, q) in proxies if !q.visible[]]
+            isequal(hidden, collect(p.hidden_groups[])) || (p.hidden_groups = hidden)
+            return
+        end
+    end
+    on(obs(p.hidden_groups)) do hidden
+        for (v, q) in proxies
+            shown = !any(h -> isequal(h, v), hidden)
+            q.visible[] == shown || (q.visible = shown)
+        end
+        return
+    end
+    return
+end
