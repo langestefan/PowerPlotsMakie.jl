@@ -115,7 +115,7 @@ end
     @test p.gp_edge_width[] ≈ p.edge_style[].sizes .* scale
     @test p.gp_node_strokewidth[] ≈ 2.0 * scale
     @test p.gp_selection_strokewidth[] ≈ p.selection_strokewidth[] * scale
-    @test extrema(p.flow_markersize[]) ≈ (6.0 * scale, 18.0 * scale)
+    @test collect(extrema(p.flow_markersize[])) ≈ [6.0 * scale, 18.0 * scale]
     # Overlays are multiples of the node they sit on, so they come along for free.
     @test p.selection_markersize[] ≈ p.gp_node_size[][1:2] .* p.selection_scale[]
 end
