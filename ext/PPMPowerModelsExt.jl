@@ -79,6 +79,15 @@ function PPM.reference_nodes(data::NETWORK)
 end
 
 """
+Boundary buses carry `"boundary" => true`. PowerModels has no field for this, so the flag
+is this package's convention; it rides along in the network dictionary and its JSON
+untouched.
+"""
+function PPM.boundary_nodes(data::NETWORK)
+    return [id for (id, bus) in _table(data, :bus) if get(bus, "boundary", false) === true]
+end
+
+"""
 Honour hand-authored or geographic coordinates stored on the bus, using the same
 `xcoord_1`/`ycoord_1` keys PowerPlots.jl writes and reads.
 """
@@ -89,6 +98,19 @@ function PPM.node_coordinates(data::NETWORK, comp::Symbol, id::AbstractString)
     y = get(entry, "ycoord_1", nothing)
     (x === nothing || y === nothing) && return nothing
     return PPM.Point2f(x, y)
+end
+
+"""
+Routes come from a `coordinates` field on the edge: a list of `[x, y]` pairs, the shape of a
+GeoJSON LineString's `coordinates`, so a route survives a round trip through PowerModels'
+JSON. Fewer than two points is no route.
+"""
+function PPM.edge_coordinates(data::NETWORK, comp::Symbol, id::AbstractString)
+    entry = get(_table(data, comp), String(id), nothing)
+    entry === nothing && return nothing
+    coords = get(entry, "coordinates", nothing)
+    (coords isa AbstractVector && length(coords) >= 2) || return nothing
+    return [PPM.Point2f(c[1], c[2]) for c in coords]
 end
 
 end # module

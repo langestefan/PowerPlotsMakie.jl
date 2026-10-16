@@ -36,7 +36,8 @@ flow_field(flow) = throw(
 )
 
 """
-    flow_arrows(net, positions, curve_distances, flow, sizerange) -> FlowArrows
+    flow_arrows(net, positions, curve_distances, flow, sizerange;
+                waypoints = nothing, hidden = nothing) -> FlowArrows
 
 Place an arrow at the midpoint of every branch carrying a flow value.
 
@@ -48,15 +49,23 @@ comparable between two.
 
 The arrow sits on the drawn path, not on the straight line between the buses: parallel
 circuits are bowed apart, and an arrow at the chord midpoint would float off its own
-circuit and onto its neighbour. Connectors never carry arrows — they are plumbing, and a
-generator does not have a direction along its stub.
+circuit and onto its neighbour. For the same reason a branch drawn along a route — given
+as per-edge `waypoints`, see [`route_waypoints`](@ref) — gets its arrow halfway along the
+route. Connectors never carry arrows — they are plumbing, and a generator does not have a
+direction along its stub. Nor do edges flagged in `hidden`, a mask over the edges: a branch
+in a hidden group has no line for its arrow to sit on.
+
+Sizes are scaled over every branch with a value, hidden or not, so hiding a group does not
+resize the arrows left on screen.
 """
 function flow_arrows(
     net::PowerNetwork,
     positions::AbstractVector,
     curve_distances,
     flow,
-    sizerange,
+    sizerange;
+    waypoints = nothing,
+    hidden = nothing,
 )
     field = flow_field(flow)
     field === nothing && return FlowArrows()
@@ -76,13 +85,20 @@ function flow_arrows(
     for (k, j) in enumerate(idx)
         m = magnitudes[k]
         isfinite(m) || continue
+        hidden === nothing || !hidden[j] || continue
         e = edgelist[j]
         p1, p2 = Point2f(positions[src(e)]), Point2f(positions[dst(e)])
         # A branch whose ends coincide has no direction to point along.
         p1 ≈ p2 && continue
 
-        d = curve_distances === nothing ? 0.0 : Float64(_at(curve_distances, j))
-        point, tangent = _path_midpoint(p1, p2, d)
+        via = waypoints === nothing ? Point2f[] : waypoints[j]
+        point, tangent = if isempty(via)
+            d = curve_distances === nothing ? 0.0 : Float64(_at(curve_distances, j))
+            _path_midpoint(p1, p2, d)
+        else
+            # `vcat` rather than `[p1; via; p2]`, which would splice the points' coordinates
+            _polyline_midpoint(vcat([p1], via, [p2]))
+        end
         angle = atan(tangent[2], tangent[1])
         values[k] < 0 && (angle += Float32(π))
 

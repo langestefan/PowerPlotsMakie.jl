@@ -145,7 +145,13 @@ end
     @test all(isfinite, p2.flow_markersize[])
 
     # The arrows follow the layout like everything else.
-    f3, ax3, p3 = powerplot(case; flow = true, flow_size = (10.0, 30.0), layout = :stress)
+    f3, ax3, p3 = powerplot(
+        case;
+        flow = true,
+        flow_size = (10.0, 30.0),
+        layout = :stress,
+        autoscale = false,
+    )
     @test extrema(p3.flow_markersize[]) == (10.0, 30.0)
 
     mktempdir() do dir

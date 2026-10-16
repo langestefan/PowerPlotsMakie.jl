@@ -1,16 +1,24 @@
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 GraphMakie = "1ecd5474-83a3-4783-bb4f-06765db800d2"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 NetworkLayout = "46757867-2c16-5918-afeb-47bfcb05e46a"
 PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 PowerPlotsMakie = "49f9eb5c-8e5a-55cd-abba-b3fc827ff2f8"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
-TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
+TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
+Tyler = "e170d443-b9d6-418a-9ee8-061e966341ef"
 
 [sources]
 PowerPlotsMakie = {path = ".."}
+
+[compat]
+# Makie 0.24.16 overflows the stack when a second web map goes into the same figure
+# (powermap! twice, see test-maps.jl); 0.24.10 does not. Held back until that is fixed
+# upstream.
+Makie = "=0.24.10"

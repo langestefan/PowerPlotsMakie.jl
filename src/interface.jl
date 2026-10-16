@@ -106,6 +106,20 @@ records the information (for PowerModels, `bus_type == 3`).
 reference_nodes(::Any) = String[]
 
 """
+    boundary_nodes(data) -> Vector{String}
+
+Ids of node components on the boundary of the modelled network: the buses where it is cut
+off from the grid around it, and where that grid is represented by an equivalent — the
+first foreign bus of a cross-border line, a TSO/DSO interface, the slack of a feeder.
+
+The recipe marks them (see the `boundary` attributes of [`powerplot`](@ref)), since what
+happens at these buses is set by the model's assumptions rather than by its physics. The
+default returns an empty vector; for PowerModels a bus is on the boundary when it has
+`"boundary" => true`.
+"""
+boundary_nodes(::Any) = String[]
+
+"""
     node_coordinates(data, comp::Symbol, id::AbstractString) -> Union{Nothing,Point2}
 
 Pre-existing coordinates for a node component, or `nothing` when it has none.
@@ -115,6 +129,21 @@ nodes and solving for the rest, which is how PowerPlots.jl's `fixed = true` beha
 default returns `nothing` for every node, i.e. positions come purely from the layout.
 """
 node_coordinates(::Any, ::Symbol, ::AbstractString) = nothing
+
+"""
+    edge_coordinates(data, comp::Symbol, id::AbstractString)
+        -> Union{Nothing,Vector{<:Point2}}
+
+The route an edge component follows between its two nodes, as a polyline in the same
+coordinate system as [`node_coordinates`](@ref), or `nothing` when it has none.
+
+This is what lets a geographic network be drawn along its real line and cable routes rather
+than as straight chords between substations. The route may run in either direction and need
+not end exactly on the node coordinates: the recipe orients it from the from-node to the
+to-node and draws it from bus to bus through the route's points (see the `routes` attribute
+of [`powerplot`](@ref)). The default returns `nothing` for every edge.
+"""
+edge_coordinates(::Any, ::Symbol, ::AbstractString) = nothing
 
 """
     supports(data) -> Bool
