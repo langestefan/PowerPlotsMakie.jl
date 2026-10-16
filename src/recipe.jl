@@ -82,6 +82,14 @@ Changing `routes` or `route_radius` on a plot that already exists takes effect a
 change of the node positions: GraphMakie redraws its edges when the positions or curves
 change, but not when only `waypoints` or `waypoint_radius` does.
 
+# Projection
+
+`projection` is applied to every coordinate the data carries — bus coordinates and line
+routes — before anything is laid out or drawn: a function from point to point, by default
+`identity`. [`web_mercator`](@ref) turns longitude and latitude into the projection web map
+tiles use, which is what [`powermap`](@ref) draws the network over. `route_radius` and
+`parallel_spread` are in the projected units.
+
 # Line styles
 
 A line style, like a colour, can come from the data: `linestyle = Field(:name)` in
@@ -145,6 +153,7 @@ settings are lost in the process.
         parallel_spread = 0.2,
         routes = :auto,
         route_radius = 0.0,
+        projection = identity,
         components = Dict{Symbol,Any}(),
         component_defaults = Dict{Symbol,Any}(),
 
@@ -420,8 +429,12 @@ _viewport_size(scene::Makie.Scene) = Vec2f(widths(scene.viewport[]))
 function Makie.plot!(p::PowerPlot)
     # Vertex positions. This is the one genuinely reactive quantity: the interaction layer
     # re-runs the layout by writing to `layout`/`pin`, and everything downstream follows.
-    map!(p.attributes, [:network, :layout, :pin], :node_pos) do net, layout, pin
-        return layout_positions(_as_network(net); layout = layout, pin = pin)
+    map!(
+        p.attributes,
+        [:network, :layout, :pin, :projection],
+        :node_pos,
+    ) do net, layout, pin, projection
+        return layout_positions(_as_network(net); layout, pin, projection)
     end
 
     # How big everything is drawn. The viewport belongs to the scene rather than to the
@@ -467,9 +480,13 @@ function Makie.plot!(p::PowerPlot)
 
     # Routes are looked up once per network; laying them between the buses follows the
     # positions, so a dragged bus keeps its lines attached.
-    map!(p.attributes, [:network, :routes], :edge_routes) do net, routes
+    map!(
+        p.attributes,
+        [:network, :routes, :projection],
+        :edge_routes,
+    ) do net, routes, projection
         network = _as_network(net)
-        return _use_routes(routes, network) ? edge_routes(network) :
+        return _use_routes(routes, network) ? edge_routes(network; projection) :
                Dict{Int,Vector{Point2f}}()
     end
     map!(

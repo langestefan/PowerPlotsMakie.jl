@@ -12,7 +12,7 @@ extension, loaded by `using PowerModels`.
 module PowerPlotsMakie
 
 using Graphs: Graphs, nv, ne, edges, vertices, src, dst
-using GeometryBasics: Point2f, Vec2f, widths
+using GeometryBasics: Point2f, Point2d, Vec2f, widths
 using Colors: Colorant, RGB
 using Makie:
     Makie,
@@ -45,6 +45,8 @@ include("attributes.jl")
 include("scale.jl")
 # Radial detection and the Buchheim tree layout.
 include("radial.jl")
+# Projecting the data's coordinates, and the web-map entry points Tyler.jl fills in.
+include("maps.jl")
 # Vertex positioning, pinning and pre-existing coordinates.
 include("layouts.jl")
 # Edge routes from the data, laid between the drawn node positions.
@@ -81,6 +83,7 @@ export ComponentRef, ComponentRole, NodeRole, EdgeRole, InjectionRole
 export PowerGraph, PowerEdge
 export RadialTree, isradial, radial_tree, layout_positions
 export edge_routes, route_waypoints
+export web_mercator, powermap, powermap!, basemap
 export LinestyleResult, resolve_linestyles, RouteLayer, route_segments, segment_styled_edges
 export NetworkGroups, network_groups, group_label, group_counts, hidden_masks
 export component_at, hover_text
@@ -92,5 +95,7 @@ export vertex_indices, edge_indices, present_components
 export component_types, component_ids, component_field
 export edge_endpoints, injection_bus, reference_nodes, boundary_nodes
 export node_coordinates, edge_coordinates
+
+__init__() = _register_map_hint()
 
 end

@@ -1,19 +1,20 @@
 """
-    edge_routes(net) -> Dict{Int,Vector{Point2f}}
+    edge_routes(net; projection = identity) -> Dict{Int,Vector{Point2f}}
 
-Routes carried by the data, keyed by edge index.
+Routes carried by the data, keyed by edge index, every point passed through `projection`
+as the bus coordinates are (see [`layout_positions`](@ref)).
 
 Only edge components are consulted, through [`edge_coordinates`](@ref); connectors are
 plumbing and have no route. A route of fewer than two points says nothing about the path
 and is ignored.
 """
-function edge_routes(net::PowerNetwork)
+function edge_routes(net::PowerNetwork; projection = identity)
     out = Dict{Int,Vector{Point2f}}()
     for (j, ref) in enumerate(net.edges)
         net.edge_roles[j] isa EdgeRole || continue
         route = edge_coordinates(net.data, ref.component, ref.id)
         route === nothing && continue
-        points = Point2f[Point2f(p) for p in route]
+        points = Point2f[_project(projection, p) for p in route]
         length(points) >= 2 && (out[j] = points)
     end
     return out
