@@ -129,8 +129,8 @@ Turn the `autoscale` attribute into the number every size is multiplied by.
 """
 resolve_autoscale(request::Bool, positions, viewport; min_pixels = MIN_NODE_PIXELS) =
     request ? autoscale_factor(positions, viewport; min_pixels) : 1.0
-resolve_autoscale(request::Real, _, _; min_pixels = nothing) = Float64(request)
-resolve_autoscale(::Nothing, _, _; min_pixels = nothing) = 1.0
+resolve_autoscale(request::Real, ::Any, ::Any; min_pixels = nothing) = Float64(request)
+resolve_autoscale(::Nothing, ::Any, ::Any; min_pixels = nothing) = 1.0
 function resolve_autoscale(request, positions, viewport; min_pixels = MIN_NODE_PIXELS)
     request === :auto && return autoscale_factor(positions, viewport; min_pixels)
     request === :off && return 1.0
