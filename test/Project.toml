@@ -21,4 +21,4 @@ PowerPlotsMakie = {path = ".."}
 # Makie 0.24.16 overflows the stack when a second web map goes into the same figure
 # (powermap! twice, see test-maps.jl); 0.24.10 does not. Held back until that is fixed
 # upstream.
-Makie = "=0.24.10"
+Makie = "0.24, =0.24.10"
